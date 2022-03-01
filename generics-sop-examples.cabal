@@ -31,19 +31,16 @@ executable generics-sop-examples
     , data-default
     , directory
     , filepath
+    , generics-sop
     , lens
     , mtl
     , profunctors
-    , relude
     , shower
+    , sop-core
     , text
     , time
     , with-utf8
-
-  mixins:
-    base hiding (Prelude),
-    relude (Relude as Prelude, Relude.Container.One),
-    relude
+    , these
 
   ghc-options:
     -Wall -Wincomplete-record-updates -Wincomplete-uni-patterns
