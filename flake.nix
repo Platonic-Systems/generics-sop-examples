@@ -1,5 +1,5 @@
 {
-  description = "haskell-template's description";
+  description = "generics-sop-examples's description";
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/b66b39216b1fef2d8c33cc7a5c72d8da80b79970";
     flake-utils.url = "github:numtide/flake-utils";
@@ -20,7 +20,7 @@
         project = returnShellEnv:
           hp.developPackage {
             inherit returnShellEnv;
-            name = "haskell-template";
+            name = "generics-sop-examples";
             root = ./.;
             withHoogle = false;
             overrides = self: super: with pkgs.haskell.lib; {
