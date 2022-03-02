@@ -44,7 +44,7 @@ Consider the following ADT (from [the `these` package](https://hackage.haskell.o
 ```haskell
 data These a b
   = This a 
-  | That a
+  | That b
   | These a b
 ```
 
@@ -57,7 +57,7 @@ We can visualize the `These` SOP in a table form:
 | Constructor | Arg 1 | Arg 2 | ... |
 | ----------- | ----- | ----- | --- |
 | This        | a     |       |
-| That        | a     |       |
+| That        | b     |       |
 | These       | a     | b     |
 
 As every Haskell datatype is a SOP, they can be reduced to a table like the above. Each row represents the sum constructor, and the individual cells to the right represents the arguments to the constructors (product type). We can drop the constructor *names* entirely, and simplify the table as:
@@ -65,7 +65,7 @@ As every Haskell datatype is a SOP, they can be reduced to a table like the abov
 |     |     |
 | --- | --- |
 | a   |     |
-| a   |     |
+| b   |     |
 | a   | b   |
 
 Every cell in this table is an unique type. If we are to define this table in Haskell, we could use type-level lists, specifically a type-level *list of lists*. The outter list represents the sum constructor, and the inner list represents the products. The *kind* of this table type would then be `[[Type]]`. Indeed [this](https://hackage.haskell.org/package/generics-sop-0.5.1.2/docs/Generics-SOP.html#t:Code) is what generics-sop uses. We can define the table type for `These` in Haskell as follows:
@@ -73,7 +73,7 @@ Every cell in this table is an unique type. If we are to define this table in Ha
 ```haskell
 type TheseTable a b =
   '[ '[ a ]
-     '[ a ]
+     '[ b ]
      '[ a, b ]
   ]
 ```
@@ -109,7 +109,7 @@ Finally, we are now in a position to understand the kind of `TheseTable` describ
 type TheseTable :: Type -> Type -> [[Type]]
 type TheseTable a b =
   '[ '[ a ]
-     '[ a ]
+     '[ b ]
      '[ a, b ]
   ]
 ```
@@ -414,6 +414,6 @@ Here are some more combinators you might want to use when writing generics code:
 
 ## Further information
 
-- [This ZuriHack talk](https://www.youtube.com/watch?v=sQxH349HOik) provides a good introduction to generics-sop
+- [This ZuriHac talk](https://www.youtube.com/watch?v=sQxH349HOik) provides a good introduction to generics-sop
 - [Applying Type-Level and Generic Programming in Haskell][ATLGP] by Andres Löh should act as a lengthy tutorial cum documentation for generics-sop
 - If haddocks are confusing, read the source. For instance, I found it helpful to scroll through [`NS.hs`](https://github.com/well-typed/generics-sop/blob/master/sop-core/src/Data/SOP/NS.hs) directly so as to understand some of the sum combinators available.
