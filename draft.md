@@ -19,7 +19,14 @@ While the former comes with `base`, the latter is much easier to write generics 
     - [Code as data; data as code](#code-as-data-data-as-code)
   - [Example: generic equality](#example-generic-equality)
     - [Naive implementation](#naive-implementation)
-    - [Combinators](#combinators)
+    - [Combinator-based implementation](#combinator-based-implementation)
+  - [Using Combinators](#using-combinators)
+    - [Specialized combinators](#specialized-combinators)
+  - [Example: route encoding](#example-route-encoding)
+    - [Manual implementation](#manual-implementation)
+    - [Identify the general pattern](#identify-the-general-pattern)
+    - [Write the generic version](#write-the-generic-version)
+  - [Constructing sums using injections](#constructing-sums-using-injections)
   - [Further information](#further-information)
 
 ## Motivation
@@ -364,7 +371,7 @@ True
 
 We just implemented an equality function that works for *any* datatype (with `Generic` instance).
 
-### Combinators
+### Combinator-based implementation
 
 The above naive implementation is hopefully illustratory of how one can "transform" SOP structures straightforwardly using typeclasses. N-ary sums and products need to be processed at type-level, so it is not uncommon to write new type-classes to dispatch on their constructors as shown above. Typically however you don't have to do that, because `generics-sop` provides combinators for common operations. Here, we will rewrite the above implementation using these combinators.
 
@@ -411,6 +418,142 @@ Here are some more combinators you might want to use when writing generics code:
 | `hcmap`     | Map a `NS` or `NP`         |
 | `ejections` | Destructing a sum (`NS`)   |
 
+## Using Combinators
+
+### Specialized combinators
+Most combinators are polymorphic over the containing structure. You might want to begin with their monomorphized versions for gentle learning curve. or example, `hcollapse` has the follwing signature that makes it work with a `NS` or a `NP`, etc.
+
+```haskell
+hcollapse :: SListIN h xs => h (K a) xs -> CollapseTo h a
+```
+
+This signature is not particularly easier to understand if you are not very familiar with the library. But the monommorphisized version, such as that for `NS`, is more straightforward to comprehend:
+
+```haskell
+collapse_NP :: NP (K a) xs -> [a]
+```
+
+These specialized versions typically are suffixed as above (ie., `_NP`).
+
+## Example: route encoding
+
+Although generic equality example did demonstrate how to use generics-sop to generally implement `eq`, it is not particular very interesting. To that end, we will demonstrate how to represent routes in a static site using algebraic data types as well as deriving encoders (`route -> FilePath`) for them automatically using generics-sop. 
+
+Imagine you are writing a static site in Haskell for your blog posts. You could represent the different routes (corresponding to generated .html files) using the following types:
+
+```haskell
+data Route
+  = Route_Index
+  | Route_Blog BlogRoute
+  deriving stock (GHC.Generic)
+  deriving anyclass (Generic)
+
+data BlogRoute
+  = BlogRoute_Index
+  | BlogRoute_Post PostSlug
+  deriving stock (GHC.Generic)
+  deriving anyclass (Generic)
+
+newtype PostSlug = PostSlug {unPostSlug :: Text}
+```
+
+Now we want to create a function `encodeRoute :: r -> FilePath` that will produce the `.html` filepath to generate when writing the HTML page for that route `r`. Let's define a typeclass for it:
+
+```haskell
+-- Class of routes that can be encoded to a filename.
+class IsRoute r where
+  encodeRoute :: r -> FilePath
+```
+
+### Manual implementation
+
+Before writing generic implementation, it is always useful to write the implementation "by hand". This will allow us to begin to build an intution for what the generic version will look like.
+
+```haskell
+-- This instance will remain manual.
+instance IsRoute PostSlug where
+  encodeRoute (PostSlug slug) = T.unpack slug <> ".html"
+
+-- These instances will be generalized.
+instance IsRoute BlogRoute where
+  encodeRoute = \case
+    BlogRoute_Index -> "index.html"
+    BlogRoute_Post slug -> "post" </> encodeRoute slug
+
+instance IsRoute Route where
+  encodeRoute = \case
+    Route_Index -> "index.html"
+    Route_Blog br -> "blog" </> encodeRoute br
+```
+
+There is nothing we can do about `PostSlug` instance, because it is not an ADT, but we *do* want to implement `encodeRoute` for both `BlogRoute` and `Route` generically. 
+
+### Identify the general pattern
+
+After having written the implementation manually, the next step is to make it as general as possible. Try to extract the "general pattern" behind these specialized-seeming implementation. Looking at the implementation above, we can conclude the general pattern as follows:
+
+- To encode `Foo_Bar` in a datetype `Foo`, we drop the `Foo_`, and take the `Bar`. Then we convert it to `bar.html`.
+- If a sum constructor has arguments, we check that it has exactly one argument (not >=2). Then call `encodeRoute` on that argument, and append it to the constructor's encoding using `/`. 
+  - For example, to encode `BlogPost_Post (PostSlug "hello")` we first encode the constructor as `"post"`, then encode the only argument as `encodeRoute (PostSlug "hello")` which reduces to `"hello.html"`, thus producing the encoding `"post/hello.html"`. Finally when encoding `Route_Blog br` - this gets encoded ito `"blog/post/hello.html", recursively.
+
+### Write the generic version
+
+Having identified the general pattern, we are now in a position to write a generic version of `encodeRoute`:
+
+```haskell
+gEncodeRoute :: Generic r => r -> FilePath
+gEncodeRoute = undefined
+```
+
+TODO: words
+
+```haskell
+gEncodeRoute :: forall r. (Generic r, All2 IsRoute (Code r), HasDatatypeInfo r) => r -> FilePath
+gEncodeRoute x = gEncodeRoute' @r (from x)
+
+gEncodeRoute' :: forall r. (All2 IsRoute (Code r), HasDatatypeInfo r) => SOP I (Code r) -> FilePath
+gEncodeRoute' (SOP x) =
+  case hcollapse $ hcmap (Proxy @(All IsRoute)) encProd x of
+    [] -> ctorSuffix <> ".html"
+    [p] -> ctorSuffix </> p
+    _ -> error ">1 prods"
+  where
+    dtInfo = datatypeInfo (Proxy @r)
+    dtName = datatypeName dtInfo
+    ctorName = ctorNames !! hindex x
+    -- From `BlogRoute_Index`, this gets us "index"
+    ctorSuffix =
+      maybe (error "ctor: bad naming") (T.unpack . T.toLower) $
+        T.stripPrefix (T.pack $ dtName <> "_") (T.pack ctorName)
+    ctorNames :: [ConstructorName] =
+      hcollapse $ hmap (K . constructorName) $ constructorInfo dtInfo
+    encProd :: All IsRoute xs => NP I xs -> K [FilePath] xs
+    encProd =
+      K . collapse_NP . cmap_NP (Proxy @IsRoute) encTerm
+    encTerm :: IsRoute b => I b -> K FilePath b
+    encTerm =
+      K . encodeRoute . unI
+```
+
+TODO: HasDatatypeInfo
+
+TODO: DefaultMethods
+
+```haskell
+class IsRoute r where
+  encodeRoute :: r -> FilePath
+  default encodeRoute ::
+    (Generic r, All2 IsRoute (Code r), HasDatatypeInfo r) =>
+    r ->
+    FilePath
+  encodeRoute = gEncodeRoute
+```
+
+TODO: GHCi 
+
+## Constructing sums using injections
+
+TODO: Use `gDecodeRoute` to explain how to create sums.
 
 ## Further information
 
