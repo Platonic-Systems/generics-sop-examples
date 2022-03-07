@@ -1,11 +1,12 @@
 module Main where
 
+import Control.Monad (forM_, unless)
 import Equality (These (That, These, This), geq, nc_geq)
 import RouteEncoding
-  ( BlogRoute (BlogRoute_Index, BlogRoute_Post),
-    IsRoute (encodeRoute),
+  ( BlogRoute (..),
+    IsRoute (decodeRoute, encodeRoute),
     PostSlug (PostSlug),
-    Route (Route_Blog, Route_Index),
+    Route (..),
   )
 
 main :: IO ()
@@ -24,3 +25,14 @@ main = do
   putStrLn $ encodeRoute r
   putStrLn $ encodeRoute Route_Index
   putStrLn $ encodeRoute $ Route_Blog BlogRoute_Index
+  putStrLn "# RouteEncoding - decodeRoute"
+  print $ decodeRoute @Route "blog/post/hello.html"
+  print $ decodeRoute @Route "index.html"
+  putStrLn "# RouteEncoding - iso"
+  forM_ ([Route_Index] <> fmap Route_Blog [BlogRoute_Index, BlogRoute_Post "foo"]) $ \r -> do
+    putStrLn $ "### " <> show r
+    putStrLn $ encodeRoute r
+    let r' = decodeRoute @Route (encodeRoute r)
+    print r'
+    unless (Just r == r') $ do
+      error "non"

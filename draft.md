@@ -26,7 +26,7 @@ While the former comes with `base`, the latter is much easier to write generics 
     - [Manual implementation](#manual-implementation)
     - [Identify the general pattern](#identify-the-general-pattern)
     - [Write the generic version](#write-the-generic-version)
-  - [Constructing sums using injections](#constructing-sums-using-injections)
+  - [Constructing sums using sList](#constructing-sums-using-slist)
   - [Further information](#further-information)
 
 ## Motivation
@@ -516,7 +516,7 @@ gEncodeRoute' (SOP x) =
   case hcollapse $ hcmap (Proxy @(All IsRoute)) encProd x of
     [] -> ctorSuffix <> ".html"
     [p] -> ctorSuffix </> p
-    _ -> error ">1 prods"
+    _ -> error ">1 prods" -- See footnote
   where
     dtInfo = datatypeInfo (Proxy @r)
     dtName = datatypeName dtInfo
@@ -535,6 +535,39 @@ gEncodeRoute' (SOP x) =
       K . encodeRoute . unI
 ```
 
+Note that our function is partial, due to `error`, but this can be avoided using constraint (see footnote).[^hc]
+
+[^hc]: 
+    In particular, we create a `HCollapseMaybe` constraint that limits `hcollapse` to work on at most 1 product:
+
+    ```haskell
+    class HCollapseMaybe h xs where
+      hcollapseMaybe :: SListIN h xs => h (K a) xs -> Maybe a
+
+    instance HCollapseMaybe NP '[] where
+      hcollapseMaybe _ = Nothing
+
+    instance HCollapseMaybe NP '[p] where
+      hcollapseMaybe (K x :* Nil) = Just x
+
+    instance (ps ~ TypeError ('Text "Expected at most 1 product")) => HCollapseMaybe NP (p ': p1 ': ps) where
+      hcollapseMaybe _ = Nothing -- Unreachable
+
+    class (All IsRoute xs, HCollapseMaybe NP xs) => IsRouteProd xs
+
+    instance (All IsRoute xs, HCollapseMaybe NP xs) => IsRouteProd xs
+    ```
+
+    Then we change `encProd` to be:
+
+    ```haskell
+    encProd :: (IsRouteProd xs) => NP I xs -> K (Maybe FilePath) xs
+    encProd =
+      K . hcollapseMaybe . hcmap (Proxy @IsRoute) encTerm
+    ```
+    
+    While propagating the `All IsRouteProd (Code r)` constraint all the way up.
+
 TODO: HasDatatypeInfo
 
 TODO: DefaultMethods
@@ -551,9 +584,12 @@ class IsRoute r where
 
 TODO: GHCi 
 
-## Constructing sums using injections
+## Constructing sums using sList
 
 TODO: Use `gDecodeRoute` to explain how to create sums.
+
+- [ ] Anamorphism combinators
+- [ ] .. when they don't work, plumb with `sList`
 
 ## Further information
 
