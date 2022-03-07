@@ -17,16 +17,19 @@ While the former comes with `base`, the latter is much easier to write generics 
   - [Let's play with SOPs](#lets-play-with-sops)
     - [Interlude: `NS` & `NP`](#interlude-ns--np)
     - [Code as data; data as code](#code-as-data-data-as-code)
-  - [Example: generic equality](#example-generic-equality)
+  - [Example 1: generic equality](#example-1-generic-equality)
     - [Naive implementation](#naive-implementation)
     - [Combinator-based implementation](#combinator-based-implementation)
   - [Using Combinators](#using-combinators)
     - [Specialized combinators](#specialized-combinators)
-  - [Example: route encoding](#example-route-encoding)
+  - [Example 2: route encoding](#example-2-route-encoding)
     - [Manual implementation](#manual-implementation)
     - [Identify the general pattern](#identify-the-general-pattern)
     - [Write the generic version](#write-the-generic-version)
-  - [Constructing sums using sList](#constructing-sums-using-slist)
+  - [Example 3: route decoding](#example-3-route-decoding)
+    - [`SList`](#slist)
+    - [Anamomrphism combinators](#anamomrphism-combinators)
+    - [Implement `gDecodeRoute`](#implement-gdecoderoute)
   - [Further information](#further-information)
 
 ## Motivation
@@ -55,7 +58,7 @@ data These a b
   | These a b
 ```
 
-This is a [**sum** type](https://en.wikipedia.org/wiki/Tagged_union), with `This`, `That` and `These` being its three sum constructors. Each sum constructor themselves are [**product** types](https://en.wikipedia.org/wiki/Product_type) - inasmuch as, say, the `a` and `b` in the 3rd constructor together represent a product type associated with that constructor. The type `These` is, under the hood, a "sum of product".
+This is a [**sum** type](https://en.wikipedia.org/wiki/Tagged_union), with `This`, `That` and `These` being its three sum constructors. Each sum constructor themselves are [**product** types](https://en.wikipedia.org/wiki/Product_type) - inasmuch as, say, the `a` and `b` in the 3rd constructor together represent a product type associated with *that* constructor. The type `These` is, under the hood, a "sum of product".
 
 ### SOPs are tables
 
@@ -121,7 +124,7 @@ type TheseTable a b =
   ]
 ```
 
-`[Type]` is the kind of type-level lists; and `[[Type]]` is the kind of type-level lists of lists. The tick (`'`) lifts a term into a type. So, while `True` represents a term of type `Bool`, `'True` on the other hand represents a *type* of *kind* `Bool`, just as `'[a]` represents a type of the kind `[Type]`. The tick "promotes" a term to be a type. See [Datatype promotion](https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/data_kinds.html#) in GHC user guide for details.
+`[Type]` is the kind of type-level lists; and `[[Type]]` is the kind of type-level lists of lists. The tick (`'`) lifts a term into a type. So, while `True` represents a *term* of type `Bool`, `'True` on the other hand represents a *type* of *kind* `Bool`, just as `'[a]` represents a type of the kind `[Type]`. The tick "promotes" a term to be a type. See [Datatype promotion](https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/data_kinds.html#) in GHC user guide for details.
 
 See [An introduction to typeclass metaprogramming](https://lexi-lambda.github.io/blog/2021/03/25/an-introduction-to-typeclass-metaprogramming/) as well as [Thinking with Types](https://thinkingwithtypes.com/) for more on type-level programming.
 
@@ -152,7 +155,7 @@ We also have [the `these` package](https://hackage.haskell.org/package/these-1.1
 > let breakfast = These "Egg" "Sausage" :: These String String
 ```
 
-We derived `Generic` on the type, and created a term value called `breakfast` (we are eating both eggs and sausages). To get the SOP representation of this value, we can use `from`:
+We derived `Generic` on the type, and created a term value called `breakfast` (we are eating both eggs and sausages). To get the SOP representation of this value, we can use [`from`](https://hackage.haskell.org/package/generics-sop-0.5.1.2/docs/Generics-SOP.html#v:from):
 
 ```haskell
 > unSOP . from $ breakfast
@@ -227,7 +230,7 @@ The difference is that unlike `Vec` (a homogenous list), `NP` is an heterogenous
 NP I '[String, Int] :: Type
 ```
 
-Just like `Vec` can enforce, this is a list of exactly size 2 ... however, unlike `Vec` we also say that the first element is of type `String` and the second (and the last) element is of type `Int`. To create a value of this heterogenous list:
+Just like `Vec` can enforce the size, this `NP` is a list of exactly size 2 ... however, unlike `Vec` we also say that the first element is of type `String` and the second (and the last) element is of type `Int` (hence a heterogenous list). To create a value of this heterogenous list:
 
 ```haskell
 > I "Meaning" :* I 42 :* Nil  :: NP I '[String, Int]
@@ -275,7 +278,7 @@ S (S (Z (I "Egg" :* I "Sausage" :* Nil)))
   :: NS (NP I) '[ [String], [String], [String, String] ]
 ```
 
-`NS`'s functor is a `NP I`, and so the inner value of that sum choice is an n-ary product, whose value is `I "Egg" :* I "Sausage" :* Nil`. 
+`NS`'s functor is a `NP I`, and so the inner value of that sum choice is an n-ary product (remember: we are working with a sum-of-product), whose value is `I "Egg" :* I "Sausage" :* Nil`. Putting that product inside a sum, we get `S (S (Z (I "Egg" :* I "Sausage" :* Nil)))`.
 
 ### Code as data; data as code
 
@@ -288,7 +291,7 @@ Ther SOP representation of `These` can be manually constructed. First we build t
 sum :: NS (NP I) '[[String], [String], [String, String]]
 ```
 
-And from this representation we can produce a value of type `These` easily, using `to`:
+And from this representation we can produce a value of type `These` easily, using [`to`](https://hackage.haskell.org/package/generics-sop-0.5.1.2/docs/Generics-SOP.html#v:to):
 
 ```haskell
 > to @(These String String) (SOP sum)
@@ -299,7 +302,7 @@ Let's stop for a moment and reflect on what we just did. By treating the type-de
 
 This concludes the section on playing with SOPs. Now let's do something actually useful.
 
-## Example: generic equality
+## Example 1: generic equality
 
 GHC's [stock deriving](https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/deriving_strategies.html#deriving-strategies) can be used to derive instances for builtin type classes, like `Eq`, on user-defined datatypes. This works for builtin type classes, but generics-sop (as well as GHC.Generics) comes in handy when you want to derive generically for arbitrary typeclasses. For a moment, let us assume that GHC had no support for stock deriving; how will we derive our `Eq` instance?
 
@@ -383,7 +386,7 @@ The combinators are explained in depth in [ATLGP]. We will introduce a few in th
 | `hcollapse`   | Convert heterogenous structure into homogenous value | `ProdEq`              |
 | `ccompare_NS` | Compare two `NS` values                              | `SumEq`               |
 
-To appreciate the value of these particular combinators, notice the 3rd column indicating the type-class it intends to replace. Withtout further ado, here is the new implementation:
+To appreciate the value of these particular combinators, notice the 3rd column indicating the type-class it intends to replace. Withtout further ado, here is the new (compact) implementation:
 
 ```haskell
 geq :: forall a. (Generic a, All2 Eq (Code a)) => a -> a -> Bool
@@ -403,25 +406,17 @@ geq' (SOP c1) (SOP c2) =
           K $ a == b
 ```
 
-This code introduces two more things:
+This code introduces two more aspects to `generics-sop`:
 
 - **Constraint propagation**: When generically transforming SOP structures we want to be able to "propagate" inner constraints outwardly, and this is what the `Proxy` class is being used for here. `All c xs` simply is an alias for `(c x1, c x2, ...)` where `xs` is a type-level list; likewise, `All2 c xss` is `c x11, c x12, ... ` where `xss` is type-level list of lists (ie., `Code a ~ xss`). Clearly, we want the `Eq` constraint in table elements to apply to the whole table row, and thereon to the table itself. And `All2 Eq (Code a)` on `geq'` specifies this.
 - **Constant functor**: The constant functor `K` is defined as `data K a b = K a`; it "discards" the second type parameter, always containing the first. Where you see `K Bool a` we are discarding the polymorphic `a` (the type of the cell in the table), and returning the (constant) type `Bool`. When we transform the structure to be over `K` (using `hcliftA2`), we are essentially making the structure *homogenous* in its elements, which in turn allows us to "collapse" it using `hcollapse` to get a single value out of it (which is what we need to be the result of `geq`).
 
-This is just a brief taste of generics-sop combinators. Read [ATLGP] for details.
-
-Here are some more combinators you might want to use when writing generics code:
-
-| Combinator  | Use                        |
-| ----------- | -------------------------- |
-| `hcpure`    | Construct a product (`NP`) |
-| `hcmap`     | Map a `NS` or `NP`         |
-| `ejections` | Destructing a sum (`NS`)   |
+This is just a brief taste of generics-sop combinators. Read [ATLGP] for details, and we shall introduce more in the examples below.
 
 ## Using Combinators
 
 ### Specialized combinators
-Most combinators are polymorphic over the containing structure. You might want to begin with their monomorphized versions for gentle learning curve. or example, `hcollapse` has the follwing signature that makes it work with a `NS` or a `NP`, etc.
+Most combinators are polymorphic over the containing structure. You might want to begin with their monomorphized versions for gentle learning curve. or example, `hcollapse` has the follwing signature that makes it possible to work with a `NS` or a `NP`, etc.
 
 ```haskell
 hcollapse :: SListIN h xs => h (K a) xs -> CollapseTo h a
@@ -435,11 +430,13 @@ collapse_NP :: NP (K a) xs -> [a]
 
 These specialized versions typically are suffixed as above (ie., `_NP`).
 
-## Example: route encoding
+## Example 2: route encoding
 
-Although generic equality example did demonstrate how to use generics-sop to generally implement `eq`, it is not particular very interesting. To that end, we will demonstrate how to represent routes in a static site using algebraic data types as well as deriving encoders (`route -> FilePath`) for them automatically using generics-sop. 
+Although the generic equality example above did demonstrate how to use generics-sop to generically implement `eq`, it is not particular very interesting. To that end, we will demonstrate how to represent routes in a statically generated site using algebraic data types as well as deriving encoders (`route -> FilePath`) for them automatically using generics-sop. 
 
-Imagine you are writing a static site in Haskell for your blog posts. You could represent the different routes (corresponding to generated .html files) using the following types:
+Imagine you are writing a static site in Haskell[^gen] for your blog posts. You could represent the different routes (corresponding to generated `.html` files) using the following types:
+
+[^gen]: Using generators like [Hakyll](https://jaspervdj.be/hakyll/) or [Ema](https://ema.srid.ca/)
 
 ```haskell
 data Route
@@ -493,8 +490,8 @@ There is nothing we can do about `PostSlug` instance, because it is not an ADT, 
 After having written the implementation manually, the next step is to make it as general as possible. Try to extract the "general pattern" behind these specialized-seeming implementation. Looking at the implementation above, we can conclude the general pattern as follows:
 
 - To encode `Foo_Bar` in a datetype `Foo`, we drop the `Foo_`, and take the `Bar`. Then we convert it to `bar.html`.
-- If a sum constructor has arguments, we check that it has exactly one argument (not >=2). Then call `encodeRoute` on that argument, and append it to the constructor's encoding using `/`. 
-  - For example, to encode `BlogPost_Post (PostSlug "hello")` we first encode the constructor as `"post"`, then encode the only argument as `encodeRoute (PostSlug "hello")` which reduces to `"hello.html"`, thus producing the encoding `"post/hello.html"`. Finally when encoding `Route_Blog br` - this gets encoded ito `"blog/post/hello.html", recursively.
+- If a sum constructor has arguments, we check that it has exactly one argument (arity <=1). Then call `encodeRoute` on that argument, and append it to the constructor's encoding using `/`. 
+  - For example, to encode `BlogPost_Post (PostSlug "hello")` we first encode the constructor as `"post"`, then encode the only argument as `encodeRoute (PostSlug "hello")` which reduces to `"hello.html"`, thus producing the encoding `"post/hello.html"`. Finally when encoding `Route_Blog br` - this gets encoded ito `"blog/post/hello.html"`, recursively.
 
 ### Write the generic version
 
@@ -505,37 +502,39 @@ gEncodeRoute :: Generic r => r -> FilePath
 gEncodeRoute = undefined
 ```
 
-TODO: words
+To derive route encoding from the constructor name, we need the datatype metadata provided by `HasDatatypeInfo` from generics-sop. `constructorInfo . datatypeInfo` provides the constructor information, from which we will determine the final route encoding (ie., `Route_Foo` -> `"foo.html"`) via indexing using `hindex`.
 
 ```haskell
-gEncodeRoute :: forall r. (Generic r, All2 IsRoute (Code r), HasDatatypeInfo r) => r -> FilePath
+gEncodeRoute :: forall r. (Generic r, All2 IsRoute (Code r), All IsRouteProd (Code r), HasDatatypeInfo r) => r -> FilePath
 gEncodeRoute x = gEncodeRoute' @r (from x)
 
-gEncodeRoute' :: forall r. (All2 IsRoute (Code r), HasDatatypeInfo r) => SOP I (Code r) -> FilePath
+gEncodeRoute' :: forall r. (All2 IsRoute (Code r), All IsRouteProd (Code r), HasDatatypeInfo r) => SOP I (Code r) -> FilePath
 gEncodeRoute' (SOP x) =
-  case hcollapse $ hcmap (Proxy @(All IsRoute)) encProd x of
-    [] -> ctorSuffix <> ".html"
-    [p] -> ctorSuffix </> p
-    _ -> error ">1 prods" -- See footnote
+  let ctorNames :: [ConstructorName] =
+        hcollapse $ hmap (K . constructorName) $ datatypeCtors @r
+      ctorSuffix = ctorStripPrefix @r (ctorNames !! hindex x)
+   in case hcollapse $ hcmap (Proxy @IsRouteProd) encProd x of
+        Nothing -> ctorSuffix <> ".html"
+        Just p -> ctorSuffix </> p
   where
-    dtInfo = datatypeInfo (Proxy @r)
-    dtName = datatypeName dtInfo
-    ctorName = ctorNames !! hindex x
-    -- From `BlogRoute_Index`, this gets us "index"
-    ctorSuffix =
-      maybe (error "ctor: bad naming") (T.unpack . T.toLower) $
-        T.stripPrefix (T.pack $ dtName <> "_") (T.pack ctorName)
-    ctorNames :: [ConstructorName] =
-      hcollapse $ hmap (K . constructorName) $ constructorInfo dtInfo
-    encProd :: All IsRoute xs => NP I xs -> K [FilePath] xs
+    encProd :: (IsRouteProd xs) => NP I xs -> K (Maybe FilePath) xs
     encProd =
-      K . collapse_NP . cmap_NP (Proxy @IsRoute) encTerm
+      K . hcollapseMaybe . hcmap (Proxy @IsRoute) encTerm
     encTerm :: IsRoute b => I b -> K FilePath b
     encTerm =
       K . encodeRoute . unI
+
+datatypeCtors :: forall a. HasDatatypeInfo a => NP ConstructorInfo (Code a)
+datatypeCtors = constructorInfo $ datatypeInfo (Proxy @a)
+
+ctorStripPrefix :: forall a. HasDatatypeInfo a => ConstructorName -> String
+ctorStripPrefix ctorName =
+  let name = datatypeName $ datatypeInfo (Proxy @a)
+   in maybe (error "ctor: bad naming") (T.unpack . T.toLower) $
+        T.stripPrefix (T.pack $ name <> "_") (T.pack ctorName)
 ```
 
-Note that our function is partial, due to `error`, but this can be avoided using constraint (see footnote).[^hc]
+`hcollapse` should be familiar; and `hcmap` is just an alias of `hcliftA` (analogous to `hcliftA2` used in the above example). New here is `hcollapseMaybe` which is a custom version of `hcollapse` we defined so as to constrain the number of products to be either zero or one (as it wouldn't make sense for a route type otherwise); its full implementation[^hc] is available in the [source](https://github.com/srid/generics-sop-examples/blob/master/src/RouteEncoding.hs).
 
 [^hc]: 
     In particular, we create a `HCollapseMaybe` constraint that limits `hcollapse` to work on at most 1 product:
@@ -568,9 +567,7 @@ Note that our function is partial, due to `error`, but this can be avoided using
     
     While propagating the `All IsRouteProd (Code r)` constraint all the way up.
 
-TODO: HasDatatypeInfo
-
-TODO: DefaultMethods
+Finally, we make use of [`DefaultMethods`](https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/default_signatures.html) to provide a default implementation in the `IsRoute` class:
 
 ```haskell
 class IsRoute r where
@@ -582,14 +579,163 @@ class IsRoute r where
   encodeRoute = gEncodeRoute
 ```
 
-TODO: GHCi 
+This in turn allows us to derive `IsRoute` arbitrarily via [`DeriveAnyClass`](https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/deriving_strategies.html), which is to say that we get our `IsRoute` instances for "free":
 
-## Constructing sums using sList
+```haskell
+data Route
+  = Route_Foo
+  | Route_Blog BlogRoute
+  deriving stock (GHC.Generic, Eq, Show)
+  deriving anyclass (Generic, HasDatatypeInfo, IsRoute)`
+```
 
-TODO: Use `gDecodeRoute` to explain how to create sums.
+`encodeRoute Route_Foo` returns `"foo.html"`, and `encodeRoute $ Route_Blog BlogRoute_Index` returns `"blog/index.html"`.
 
-- [ ] Anamorphism combinators
-- [ ] .. when they don't work, plumb with `sList`
+## Example 3: route decoding
+
+As a final example we shall demonstrate what it takes to construct new values. Naturally, our `IsRoute` class above needs a new method, `decodeRoute` for the reverse conversion (perhaps you want to check the validity of links in the generated HTML):
+
+```haskell
+class IsRoute r where
+  -- | Encode a route to file path on disk.
+  encodeRoute :: r -> FilePath
+  -- | Decode a route from its encoded filepath
+  decodeRoute :: FilePath -> Maybe r
+
+gDecodeRoute :: forall r. (Generic r, All2 IsRoute (Code r), HasDatatypeInfo r) => FilePath -> Maybe r
+gDecodeRoute fp = undefined
+```
+
+### `SList`
+
+Generically constructing values is a little more involved, but underlying it all is the singleton for type-level lists, `SList`.
+
+```haskell
+data SList :: [k] -> Type where
+  SNil  :: SList '[]
+  SCons :: SListI xs => SList (x ': xs)
+
+-- | Get hold of an explicit singleton (that one can then
+-- pattern match on) for a type-level list
+--
+sList :: SListI xs => SList xs
+sList = ...
+```
+
+We require a heavy use of `sList` to generically implement `decodeRoute`:
+
+### Anamomrphism combinators
+
+To implement `decodeRoute` generically, we are looking to construct a `NS (NP I) (Code r)` depending on which constructor the first path segment of `fp` matches with. Then, we recurse into constructing the inner route for the sum constructor's (only and optional) product type. This recursive building of values is called [anamorphism](https://en.wikipedia.org/wiki/Anamorphism#Anamorphisms_in_functional_programming). In particular, we need two anamorphisms: one for the outer sum, and another for the inner product.
+
+`generics-sop` already provides [`cana_NS`](https://hackage.haskell.org/package/sop-core-0.5.0.2/docs/Data-SOP-NS.html#v:cana_NS) and [`cana_NP`](https://hackage.haskell.org/package/sop-core-0.5.0.2/docs/Data-SOP-NP.html#v:cana_NP) as anamorphisms for `NS` and `NP` respectively, however we need a slightly different version of them, to return `Maybe` values instead. We shall define them (prefixed with `m`) accordingly as follows (note the use of `sList`):
+
+```haskell
+-- | Like `mcana_NS` but returns a Maybe
+mcana_NS ::
+  forall c proxy s f xs.
+  (All c xs) =>
+  proxy c ->
+  (forall y ys. c y => s (y ': ys) -> Either (Maybe (f y)) (s ys)) ->
+  s xs ->
+  Maybe (NS f xs)
+mcana_NS _ decide = go sList
+  where
+    go :: forall ys. (All c ys) => SList ys -> s ys -> Maybe (NS f ys)
+    go SNil _ = Nothing
+    go SCons s = case decide s of
+      Left x -> Z <$> x
+      Right s' -> S <$> go sList s'
+
+-- | Like `cana_NP` but returns a Maybe
+mcana_NP ::
+  forall c proxy s f xs.
+  (All c xs) =>
+  proxy c ->
+  (forall y ys. (c y, SListI ys) => s (y ': ys) -> Maybe (f y, s ys)) ->
+  s xs ->
+  Maybe (NP f xs)
+mcana_NP _ uncons = go sList
+  where
+    go :: forall ys. (All c ys) => SList ys -> s ys -> Maybe (NP f ys)
+    go SNil _ = pure Nil
+    go SCons s = do
+      (x, s') <- uncons s
+      xs <- go sList s'
+      pure $ x :* xs
+```
+
+
+### Implement `gDecodeRoute`
+
+Now we are ready to use a combination of `sList`, `mcana_NS` and `mcana_NP` to implement `gDecodeRoute`:
+
+```haskell
+gDecodeRoute :: forall r. (Generic r, All IsRouteProd (Code r), All2 IsRoute (Code r), HasDatatypeInfo r) => FilePath -> Maybe r
+gDecodeRoute fp = do
+  basePath : restPath <- pure $ splitDirectories fp
+  -- Build the sum using an anamorphism
+  to . SOP
+    <$> mcana_NS @IsRouteProd @_ @_ @(NP I)
+      Proxy
+      (anamorphismSum basePath restPath)
+      (datatypeCtors @r)
+  where
+    anamorphismSum :: forall xs xss. IsRouteProd xs => FilePath -> [FilePath] -> NP ConstructorInfo (xs ': xss) -> Either (Maybe (NP I xs)) (NP ConstructorInfo xss)
+    anamorphismSum base rest (p :* ps) =
+      fromMaybe (Right ps) $ do
+        let ctorSuffix = ctorStripPrefix @r (constructorName p)
+        Left <$> case sList @xs of
+          SNil -> do
+            -- Constructor without arguments
+            guard $ ctorSuffix <> ".html" == base && null rest
+            pure $ Just Nil
+          SCons -> do
+            -- Constructor with an argument
+            guard $ ctorSuffix == base
+            pure $
+              mcana_NP @_ @_ @_ @I
+                (Proxy @IsRoute)
+                anamorphismProduct
+                Proxy
+      where
+        anamorphismProduct :: forall y1 ys1. (IsRoute y1, SListI ys1) => Proxy (y1 ': ys1) -> Maybe (I y1, Proxy ys1)
+        anamorphismProduct Proxy = case sList @ys1 of
+          SNil -> do
+            -- Recurse into the only product argument
+            guard $ not $ null rest
+            r' <- decodeRoute @y1 $ joinPath rest
+            pure (I r', Proxy)
+          SCons ->
+            -- Not reachable, due to HCollapseMaybe constraint
+            Nothing
+```
+
+We split the path `fp`, and process the first path segment by matching it with one of the sum constructors. In `anamorphismSum`, we handle the two cases of null product constructor and singleton product constructor (`mcana_NS` is reponsible for recursing into other sum constructors). For null product, we match the file path with "${constructorSuffix}.html", and return immediately. For single product case, we use `mcana_NP` to build the product. `anammorphismProduct` uses `sList` to case match on the rest of the products (ie. 2nd, etc.) - and calls `decodeRoute` on first product only if the rest is empty, which in turn requires us to the `IsRoute` constraint all the way above.
+
+Finally we use `DefaultMethods` to specify a default implementation in `IsRoute` class.
+
+We can test that our code works in ghci:
+
+```haskell
+> import RouteEncoding 
+> encodeRoute Route_Index
+"index.html"
+> decodeRoute @Route $ encodeRoute Route_Index
+Just Route_Index
+```
+
+To be completely sure, you can test it with recursive routes:
+
+```haskell
+> encodeRoute $ Route_Blog $ BlogRoute_Post "hello"
+"blog/post/hello.html"
+> decodeRoute @Route $ encodeRoute $ Route_Blog $ BlogRoute_Post "hello"
+Just (Route_Blog (BlogRoute_Post "hello"))
+> 
+```
+
+All the code in this post is available [in this repo](https://github.com/srid/generics-sop-examples/). That concludes our introduction to `generics-sop`
 
 ## Further information
 
