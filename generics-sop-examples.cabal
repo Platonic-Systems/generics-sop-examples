@@ -41,7 +41,10 @@ executable generics-sop-examples
     , time
     , with-utf8
 
-  other-modules:      Equality
+  other-modules:
+    Equality
+    RouteEncoding
+
   ghc-options:
     -Wall -Wincomplete-record-updates -Wincomplete-uni-patterns
     -Wmissing-deriving-strategies -Wunused-foralls -Wunused-foralls
