@@ -29,6 +29,7 @@ While the former comes with `base`, the latter is much easier to write generics 
     - [`SList`](#slist)
     - [Anamomrphism combinators](#anamomrphism-combinators)
     - [Implement `gDecodeRoute`](#implement-gdecoderoute)
+    - [Putting it all together](#putting-it-all-together)
   - [Further information](#further-information)
 
 ## Motivation
@@ -504,9 +505,12 @@ gEncodeRoute x = gEncodeRoute' @r (from x)
 
 gEncodeRoute' :: forall r. (All2 IsRoute (Code r), All IsRouteProd (Code r), HasDatatypeInfo r) => SOP I (Code r) -> FilePath
 gEncodeRoute' (SOP x) =
+  -- Determine the contructor name and then strip its prefix.
   let ctorNames :: [ConstructorName] =
         hcollapse $ hmap (K . constructorName) $ datatypeCtors @r
-      ctorSuffix = ctorStripPrefix @r (ctorNames !! hindex x)
+      ctorName = ctorNames !! hindex x
+      ctorSuffix = ctorStripPrefix @r ctorName
+  -- Encode the product argument, if any, otherwise end the route string with ".html"
    in case hcollapse $ hcmap (Proxy @IsRouteProd) encProd x of
         Nothing -> ctorSuffix <> ".html"
         Just p -> ctorSuffix </> p
@@ -561,7 +565,7 @@ ctorStripPrefix ctorName =
     
     While propagating the `All IsRouteProd (Code r)` constraint all the way up.
 
-Finally, we make use of [`DefaultMethods`](https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/default_signatures.html) to provide a default implementation in the `IsRoute` class:
+Finally, we make use of [`DefaultSignatures`](https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/default_signatures.html) to provide a default implementation in the `IsRoute` class:
 
 ```haskell
 class IsRoute r where
@@ -583,11 +587,11 @@ data Route
   deriving anyclass (Generic, HasDatatypeInfo, IsRoute)`
 ```
 
-`encodeRoute Route_Foo` returns `"foo.html"`, and `encodeRoute $ Route_Blog BlogRoute_Index` returns `"blog/index.html"`.
+`encodeRoute Route_Foo` now returns `"foo.html"` and `encodeRoute $ Route_Blog BlogRoute_Index` returns `"blog/index.html"`, all without needing boilerplate implementation.
 
 ## Example 3: route decoding
 
-As a final example, we shall demonstrate what it takes to construct new values. Naturally, our `IsRoute` class above needs a new method, `decodeRoute` for the reverse conversion (perhaps you want to check the validity of links in the generated HTML):
+As a final example, we shall demonstrate what it takes to *construct* new values. Naturally, our `IsRoute` class above needs a new method, `decodeRoute` for the reverse conversion (perhaps you want to check the validity of links in the generated HTML):
 
 ```haskell
 class IsRoute r where
@@ -602,7 +606,7 @@ gDecodeRoute fp = undefined
 
 ### `SList`
 
-Generically constructing values is a little more involved, but underlying it all is the singleton for type-level lists, `SList`.
+Generically constructing values is a little more involved, where it useful to know about singleton for type-level lists, `SList`.
 
 ```haskell
 data SList :: [k] -> Type where
@@ -616,7 +620,7 @@ sList :: SListI xs => SList xs
 sList = ...
 ```
 
-We require heavy use of `sList` to generically implement `decodeRoute`:
+We require heavy use of `sList` to generically implement `decodeRoute`. `sList` pretty much allows us to "case-match" on the type-level list and build our combinators accordingly, as we will see below.
 
 ### Anamomrphism combinators
 
@@ -625,7 +629,7 @@ To implement `decodeRoute` generically, we are looking to construct a `NS (NP I)
 `generics-sop` already provides [`cana_NS`](https://hackage.haskell.org/package/sop-core-0.5.0.2/docs/Data-SOP-NS.html#v:cana_NS) and [`cana_NP`](https://hackage.haskell.org/package/sop-core-0.5.0.2/docs/Data-SOP-NP.html#v:cana_NP) as anamorphisms for `NS` and `NP` respectively. However we need a slightly different version of them, to return `Maybe` values instead. We shall define them (prefixed with `m`) accordingly as follows (note the use of `sList`):
 
 ```haskell
--- | Like `mcana_NS` but returns a Maybe
+-- | Like `cana_NS` but returns a Maybe
 mcana_NS ::
   forall c proxy s f xs.
   (All c xs) =>
@@ -667,6 +671,7 @@ Now we are ready to use a combination of `sList`, `mcana_NS` and `mcana_NP` to i
 ```haskell
 gDecodeRoute :: forall r. (Generic r, All IsRouteProd (Code r), All2 IsRoute (Code r), HasDatatypeInfo r) => FilePath -> Maybe r
 gDecodeRoute fp = do
+  -- We operate on first element of the filepath, and inductively decode the rest.
   basePath : restPath <- pure $ splitDirectories fp
   -- Build the sum using an anamorphism
   to . SOP
@@ -675,17 +680,21 @@ gDecodeRoute fp = do
       (anamorphismSum basePath restPath)
       (datatypeCtors @r)
   where
+    -- The `base` part of the path should correspond to the constructor name. 
     anamorphismSum :: forall xs xss. IsRouteProd xs => FilePath -> [FilePath] -> NP ConstructorInfo (xs ': xss) -> Either (Maybe (NP I xs)) (NP ConstructorInfo xss)
     anamorphismSum base rest (p :* ps) =
       fromMaybe (Right ps) $ do
         let ctorSuffix = ctorStripPrefix @r (constructorName p)
         Left <$> case sList @xs of
           SNil -> do
-            -- Constructor without arguments
+            -- For constructors without arguments, we simply expect the `rest`
+            -- of the path to be empty.
             guard $ ctorSuffix <> ".html" == base && null rest
             pure $ Just Nil
           SCons -> do
-            -- Constructor with an argument
+            -- For constructors with an argument, we ensure that the constructor
+            -- name matches the base part and then recurse into decoding the
+            -- argument itself.
             guard $ ctorSuffix == base
             pure $
               mcana_NP @_ @_ @_ @I
@@ -695,6 +704,8 @@ gDecodeRoute fp = do
       where
         anamorphismProduct :: forall y1 ys1. (IsRoute y1, SListI ys1) => Proxy (y1 ': ys1) -> Maybe (I y1, Proxy ys1)
         anamorphismProduct Proxy = case sList @ys1 of
+          -- We "case match" on the rest of the products, to handle the scenario
+          -- of there being exactly one product.
           SNil -> do
             -- Recurse into the only product argument
             guard $ not $ null rest
@@ -707,7 +718,9 @@ gDecodeRoute fp = do
 
 We split the path `fp` and process the first path segment by matching it with one of the sum constructors. In `anamorphismSum` we handle the two cases of null product constructor and singleton product constructor (`mcana_NS` is responsible for recursing into other sum constructors). For null product, we match the file path with "${constructorSuffix}.html" and return immediately. For a single product case, we use `mcana_NP` to build the product. `anammorphismProduct` uses `sList` to case match on the rest of the products (i.e. 2nd, etc.) - and calls `decodeRoute` on the first product only if the rest is empty, which in turn requires us to the `IsRoute` constraint all the way above.
 
-Finally, we use `DefaultMethods` to specify a default implementation in `IsRoute` class.
+Finally, we use `DefaultSignatures` to specify a default implementation in `IsRoute` class.
+
+### Putting it all together
 
 We can test that our code works in ghci:
 
@@ -719,20 +732,20 @@ We can test that our code works in ghci:
 Just Route_Index
 ```
 
-To be completely sure, you can test it with recursive routes:
+To be completely sure, we can test it with inductive route values:
 
 ```haskell
 > encodeRoute $ Route_Blog $ BlogRoute_Post "hello"
 "blog/post/hello.html"
-> decodeRoute @Route $ encodeRoute $ Route_Blog $ BlogRoute_Post "hello"
+> decodeRoute @Route "blog/post/hello.html"
 Just (Route_Blog (BlogRoute_Post "hello"))
 > 
 ```
 
-All the code in this post is available [in this repo](https://github.com/srid/generics-sop-examples/). That concludes our introduction to `generics-sop`
+This concludes our introduction to `generics-sop`.
 
 ## Further information
 
+- [Source code](https://github.com/srid/generics-sop-examples/) for this blog post
 - [This ZuriHac talk](https://www.youtube.com/watch?v=sQxH349HOik) provides a good introduction to generics-sop
-- [Applying Type-Level and Generic Programming in Haskell][ATLGP] by Andres Löh should act as a lengthy tutorial cum documentation for generics-sop
-- If haddocks are confusing, read the source. For instance, I found it helpful to scroll through [`NS.hs`](https://github.com/well-typed/generics-sop/blob/master/sop-core/src/Data/SOP/NS.hs) directly to understand some of the sum combinators available.
+- [Applying Type-Level and Generic Programming in Haskell][ATLGP] by Andres Löh acts as a lengthy tutorial cum documentation for generics-sop
