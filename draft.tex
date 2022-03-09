@@ -1,0 +1,1303 @@
+\hypertarget{a-concise-introduction-to-generics-sop}{%
+\section{\texorpdfstring{A concise introduction to
+\texttt{generics-sop}}{A concise introduction to generics-sop}}\label{a-concise-introduction-to-generics-sop}}
+
+A fascinating aspect of Lisp-based programming languages is that
+\href{https://en.wikipedia.org/wiki/Code_as_data}{code is data and data
+is code}. This property, called
+\href{https://en.wikipedia.org/wiki/Homoiconicity}{homoiconicity}, is
+what makes Lisp macros so powerful. This sort of runtime operation done
+on arbitrary datatypes is called
+\href{https://en.wikipedia.org/wiki/Polymorphism_(computer_science)\#Polytypism}{polytypism}
+or datatype genericity. In Haskell, the following two packages provide
+datatype genericity:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  \href{https://hackage.haskell.org/package/base-4.16.0.0/docs/GHC-Generics.html}{GHC
+  Generics}
+\item
+  \href{https://hackage.haskell.org/package/generics-sop}{generics-sop}
+\end{enumerate}
+
+While the former comes with \texttt{base}, the latter is much easier to
+write generics code in, and this blog post introduces
+\texttt{generics-sop}.
+
+\begin{itemize}
+\tightlist
+\item
+  \protect\hyperlink{a-concise-introduction-to-generics-sop}{A concise
+  introduction to \texttt{generics-sop}}
+
+  \begin{itemize}
+  \tightlist
+  \item
+    \protect\hyperlink{motivation}{Motivation}
+  \item
+    \protect\hyperlink{basics}{Basics}
+
+    \begin{itemize}
+    \tightlist
+    \item
+      \protect\hyperlink{datatypes-are-sops-under-the-hood}{Datatypes
+      are SOPs under the hood}
+    \item
+      \protect\hyperlink{sops-are-tables}{SOPs are tables}
+    \item
+      \protect\hyperlink{interlude-a-foray-into-type-level-programming}{Interlude:
+      a foray into type-level programming}
+    \end{itemize}
+  \item
+    \protect\hyperlink{lets-play-with-sops}{Let's play with SOPs}
+
+    \begin{itemize}
+    \tightlist
+    \item
+      \protect\hyperlink{interlude-ns--np}{Interlude: \texttt{NS} \&
+      \texttt{NP}}
+    \item
+      \protect\hyperlink{code-as-data-data-as-code}{Code as data; data
+      as code}
+    \end{itemize}
+  \item
+    \protect\hyperlink{example-1-generic-equality}{Example 1: generic
+    equality}
+
+    \begin{itemize}
+    \tightlist
+    \item
+      \protect\hyperlink{naive-implementation}{Naive implementation}
+    \item
+      \protect\hyperlink{combinator-based-implementation}{Combinator-based
+      implementation}
+
+      \begin{itemize}
+      \tightlist
+      \item
+        \protect\hyperlink{interlude-specialized-combinators}{Interlude:
+        Specialized combinators}
+      \end{itemize}
+    \end{itemize}
+  \item
+    \protect\hyperlink{example-2-route-encoding}{Example 2: route
+    encoding}
+
+    \begin{itemize}
+    \tightlist
+    \item
+      \protect\hyperlink{manual-implementation}{Manual implementation}
+    \item
+      \protect\hyperlink{identify-the-general-pattern}{Identify the
+      general pattern}
+    \item
+      \protect\hyperlink{write-the-generic-version}{Write the generic
+      version}
+    \end{itemize}
+  \item
+    \protect\hyperlink{example-3-route-decoding}{Example 3: route
+    decoding}
+
+    \begin{itemize}
+    \tightlist
+    \item
+      \protect\hyperlink{slist}{\texttt{SList}}
+    \item
+      \protect\hyperlink{anamomrphism-combinators}{Anamomrphism
+      combinators}
+    \item
+      \protect\hyperlink{implement-gdecoderoute}{Implement
+      \texttt{gDecodeRoute}}
+    \item
+      \protect\hyperlink{putting-it-all-together}{Putting it all
+      together}
+    \end{itemize}
+  \item
+    \protect\hyperlink{further-information}{Further information}
+  \end{itemize}
+\end{itemize}
+
+\hypertarget{motivation}{%
+\subsection{Motivation}\label{motivation}}
+
+Generic programming is useful in avoiding writing of boilerplate
+implementations for each datatype that are otherwise similar in some
+way. This could be a
+(\href{https://www.sciencedirect.com/science/article/pii/S0167642304000152}{polytypic})
+function or a typeclass instance. For example, instead of having to
+manually write \texttt{FromJSON} and \texttt{ToJSON} instances for each
+of your datatypes, you can use generics to derive them automatically.
+Other examples include pretty printers, parsers, equality functions and
+route encoders.
+
+\hypertarget{basics}{%
+\subsection{Basics}\label{basics}}
+
+Before diving, we must understand the ``SOP'' in generics-\textbf{sop}.
+
+\hypertarget{datatypes-are-sops-under-the-hood}{%
+\subsubsection{Datatypes are SOPs under the
+hood}\label{datatypes-are-sops-under-the-hood}}
+
+Haskell has two kinds of datatypes:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  \href{https://en.wikipedia.org/wiki/Algebraic_data_type}{Algebraic
+  data types}, or ADTs
+\item
+  Newtypes
+\end{enumerate}
+
+Both ADTs and newtypes are a ``sum-of-product'' (SOP) under the hood.
+When writing generics-sop code, we operate on these SOPs rather than
+directly on the datatype, because every datatype is ``polymorphic'' in
+their SOP representation. The basic idea is that if you can write a
+function \texttt{SOP\ -\textgreater{}\ a}, then you get
+\texttt{SomeDataType\ -\textgreater{}\ a} for free for \emph{any}
+\texttt{SomeDataType}. This is called
+\href{https://en.wikipedia.org/wiki/Polymorphism_(computer_science)\#Polytypism}{polytypism}.
+
+Consider the following ADT (from
+\href{https://hackage.haskell.org/package/these-1.1.1.1/docs/Data-These.html}{the
+\texttt{these} package}):
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{{-}{-} \textasciigrave{}These\textasciigrave{} is like \textasciigrave{}Either\textasciigrave{}, but with a 3rd possibility of representing both values.}
+\KeywordTok{data} \DataTypeTok{These}\NormalTok{ a b}
+  \OtherTok{=} \DataTypeTok{This}\NormalTok{ a }
+  \OperatorTok{|} \DataTypeTok{That}\NormalTok{ b}
+  \OperatorTok{|} \DataTypeTok{These}\NormalTok{ a b}
+\end{Highlighting}
+\end{Shaded}
+
+Here, \texttt{These} is a
+\href{https://en.wikipedia.org/wiki/Tagged_union}{\textbf{sum} type},
+with \texttt{This}, \texttt{That} and \texttt{These} being its three sum
+constructors. Each sum constructor themselves are
+\href{https://en.wikipedia.org/wiki/Product_type}{\textbf{product}
+types} - inasmuch as, say, the \texttt{a} and \texttt{b} in the 3rd
+constructor together represent a product type associated with
+\emph{that} constructor. The type \texttt{These} is therefore a ``sum of
+product''.
+
+\hypertarget{sops-are-tables}{%
+\subsubsection{SOPs are tables}\label{sops-are-tables}}
+
+To gain better intuition, we may visualize the \texttt{These} SOP in a
+table form:
+
+\begin{longtable}[]{@{}llll@{}}
+\toprule
+Constructor & Arg 1 & Arg 2 & \ldots{} \\
+\midrule
+\endhead
+This & a & & \\
+That & b & & \\
+These & a & b & \\
+\bottomrule
+\end{longtable}
+
+As every Haskell datatype is a SOP, they can be (visually) reduced to a
+table like the above. Each row represents the sum constructor, and the
+individual cells to the right represent the arguments to the
+constructors (product type). We can drop the constructor \emph{names}
+entirely and simplify the table as:
+
+\begin{longtable}[]{@{}ll@{}}
+\toprule
+\endhead
+a & \\
+b & \\
+a & b \\
+\bottomrule
+\end{longtable}
+
+(\emph{\texttt{These}} type visually represented as a table)
+
+Every cell in this table is a unique type. To define this table in
+Haskell we could use type-level lists, specifically a type-level
+\emph{list of lists}. The outer list represents the sum constructor, and
+the inner list represents the products. The \emph{kind} of this table
+type would then be \texttt{{[}{[}Type{]}{]}}. Indeed
+\href{https://hackage.haskell.org/package/generics-sop-0.5.1.2/docs/Generics-SOP.html\#t:Code}{this}
+is what generics-sop uses. We can define the table type for
+\texttt{These} in Haskell as follows:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{type} \DataTypeTok{TheseTable}\NormalTok{ a b }\OtherTok{=}
+\NormalTok{  \textquotesingle{}[ \textquotesingle{}[ a ]}
+\NormalTok{     \textquotesingle{}[ b ]}
+\NormalTok{     \textquotesingle{}[ a, b ]}
+\NormalTok{  ]}
+\end{Highlighting}
+\end{Shaded}
+
+If you are confused about this syntax, read the following ``Interlude''
+section.
+
+\hypertarget{interlude-a-foray-into-type-level-programming}{%
+\subsubsection{Interlude: a foray into type-level
+programming}\label{interlude-a-foray-into-type-level-programming}}
+
+What is a ``kind''? Kinds are to types what types are to terms. For
+example, the \emph{type of} of the term \texttt{"Hello\ world"} is
+\texttt{String}. The latter is a ``type,'' whereas the former is a
+``term''. Furthermore we can go one level up and ask - what the
+\emph{kind of} of the type \texttt{String} is; and the answer is
+\texttt{Type}. We can clarify this further by explicitly annotating the
+kinds of types when defining them (just as we annotate the types of
+terms when defining them):
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{{-}{-} Here, we define a term (2nd line) and declare its type (1st line)}
+\OtherTok{someBool ::} \DataTypeTok{Bool}
+\NormalTok{someBool }\OtherTok{=} \DataTypeTok{True} 
+
+\CommentTok{{-}{-} Here, we define a type (2nd line) and declare its kind (1st line)}
+\KeywordTok{type} \DataTypeTok{Bool}\OtherTok{ ::} \DataTypeTok{Type}
+\KeywordTok{data} \DataTypeTok{Bool} \OtherTok{=} \DataTypeTok{False} \OperatorTok{|} \DataTypeTok{True}
+\end{Highlighting}
+\end{Shaded}
+
+Parametrized types, such as \texttt{Maybe}, have a type-level function
+as their kind:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{type} \DataTypeTok{Maybe}\OtherTok{ ::} \DataTypeTok{Type} \OtherTok{{-}\textgreater{}} \DataTypeTok{Type} 
+\KeywordTok{data} \DataTypeTok{Maybe}\NormalTok{ a }\OtherTok{=} \DataTypeTok{Nothing} \OperatorTok{|} \DataTypeTok{Just}\NormalTok{ a}
+\end{Highlighting}
+\end{Shaded}
+
+Here we say that ``the type \texttt{Maybe} is of kind
+\texttt{Type\ -\textgreater{}\ Type}''. In other words, \texttt{Maybe}
+is a \emph{type-level function} that takes a type of kind \texttt{Type}
+as an argument and returns another type of the same kind \texttt{Type}
+as its result.
+
+Finally, we are now in a position to understand the kind of
+\texttt{TheseTable} described in the prior section:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{type} \DataTypeTok{TheseTable}\OtherTok{ ::} \DataTypeTok{Type} \OtherTok{{-}\textgreater{}} \DataTypeTok{Type} \OtherTok{{-}\textgreater{}}\NormalTok{ [[}\DataTypeTok{Type}\NormalTok{]]}
+\KeywordTok{type} \DataTypeTok{TheseTable}\NormalTok{ a b }\OtherTok{=}
+\NormalTok{  \textquotesingle{}[ \textquotesingle{}[ a ]}
+\NormalTok{     \textquotesingle{}[ b ]}
+\NormalTok{     \textquotesingle{}[ a, b ]}
+\NormalTok{  ]}
+\end{Highlighting}
+\end{Shaded}
+
+\texttt{{[}Type{]}} is the kind of type-level lists, and
+\texttt{{[}{[}Type{]}{]}} is the kind of type-level lists of lists. The
+tick (\texttt{\textquotesingle{}}) lifts a term into a type. So, while
+\texttt{True} represents a \emph{term} of type \texttt{Bool},
+\texttt{\textquotesingle{}True} on the other hand represents a
+\emph{type} of \emph{kind} \texttt{Bool}, just as
+\texttt{\textquotesingle{}{[}a{]}} represents a type of the kind
+\texttt{{[}Type{]}}. The tick ``promotes'' a term to be a type. See
+\href{https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/data_kinds.html\#}{Datatype
+promotion} in GHC user guide for details.
+
+See
+\href{https://lexi-lambda.github.io/blog/2021/03/25/an-introduction-to-typeclass-metaprogramming/}{An
+introduction to typeclass metaprogramming} as well as
+\href{https://thinkingwithtypes.com/}{Thinking with Types} for more on
+type-level programming.
+
+\hypertarget{lets-play-with-sops}{%
+\subsection{Let's play with SOPs}\label{lets-play-with-sops}}
+
+Enough theory, let's get our hands dirty in GHCi. If you use Nix, you
+can clone \href{https://github.com/srid/generics-sop-examples}{this
+repo} and run \texttt{bin/repl} to get GHCi with everything configured
+ahead for you.
+
+\begin{verbatim}
+$ git clone https://github.com/srid/generics-sop-examples.git 
+$ cd ./generics-sop-examples
+$ bin/repl
+[1 of 1] Compiling Main             ( src/Main.hs, interpreted )
+Ok, one module loaded.
+*Main>
+\end{verbatim}
+
+The project already has \texttt{generics-sop} and \texttt{sop-core}
+added to the .cabal file, so you should be able to import it:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\OperatorTok{\textgreater{}} \KeywordTok{import} \DataTypeTok{Generics.SOP}
+\end{Highlighting}
+\end{Shaded}
+
+We also have
+\href{https://hackage.haskell.org/package/these-1.1.1.1/docs/Data-These.html}{the
+\texttt{these} package} added to the .cabal file because it provides the
+above \texttt{These} type from \texttt{Data.These} module. To explore
+the SOP representation of the \texttt{These} type, let us do some
+bootstrapping:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\OperatorTok{\textgreater{}} \KeywordTok{import} \DataTypeTok{Data.These} 
+\OperatorTok{\textgreater{}} \KeywordTok{instance} \DataTypeTok{Generic}\NormalTok{ (}\DataTypeTok{These}\NormalTok{ a b) }\CommentTok{{-}{-} Derive generics{-}sop instance}
+\OperatorTok{\textgreater{}} \KeywordTok{let}\NormalTok{ breakfast }\OtherTok{=} \DataTypeTok{These} \StringTok{"Egg"} \StringTok{"Sausage"}\OtherTok{ ::} \DataTypeTok{These} \DataTypeTok{String} \DataTypeTok{String}
+\end{Highlighting}
+\end{Shaded}
+
+We derived \texttt{Generic} on the type and created a term value called
+\texttt{breakfast} (we are eating both eggs and sausages). To get the
+SOP representation of this value, we can use
+\href{https://hackage.haskell.org/package/generics-sop-0.5.1.2/docs/Generics-SOP.html\#v:from}{\texttt{from}}:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\OperatorTok{\textgreater{}}\NormalTok{ unSOP }\OperatorTok{.}\NormalTok{ from }\OperatorTok{$}\NormalTok{ breakfast}
+\DataTypeTok{S}\NormalTok{ (}\DataTypeTok{S}\NormalTok{ (}\DataTypeTok{Z}\NormalTok{ (}\DataTypeTok{I} \StringTok{"Egg"} \OperatorTok{:*} \DataTypeTok{I} \StringTok{"Sausage"} \OperatorTok{:*} \DataTypeTok{Nil}\NormalTok{)))}
+\end{Highlighting}
+\end{Shaded}
+
+Well explain the above value structure in a bit, but the key thing to
+realize is that this value corresponds to the 3rd row in the SOP table
+for \texttt{These}:
+
+\begin{longtable}[]{@{}ll@{}}
+\toprule
+\endhead
+String & \\
+String & \\
+String & String \\
+\bottomrule
+\end{longtable}
+
+Because \texttt{breakfast} is a value of the 3rd constructor of
+\texttt{These} and it contains two values (the product of ``Egg'' and
+``Sausage''). The corresponding Haskell type for this table:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{type} \DataTypeTok{TheseTable}\OtherTok{ ::}\NormalTok{ [[}\DataTypeTok{Type}\NormalTok{]]}
+\KeywordTok{type} \DataTypeTok{TheseTable} \OtherTok{=}
+\NormalTok{  \textquotesingle{}[ \textquotesingle{}[ }\DataTypeTok{String}\NormalTok{ ]}
+\NormalTok{     \textquotesingle{}[ }\DataTypeTok{String}\NormalTok{ ]}
+\NormalTok{     \textquotesingle{}[ }\DataTypeTok{String}\NormalTok{, }\DataTypeTok{String}\NormalTok{ ]}
+\NormalTok{  ]}
+\end{Highlighting}
+\end{Shaded}
+
+This type is automatically provided by \texttt{generics-sop} whenever we
+derive a \texttt{Generic} instance for the type in question. We did
+precisely that further above by evaluating
+\texttt{instance\ Generic\ (These\ a\ b)} in GHCi. Instead of manually
+defining \texttt{TheseTable} as above, deriving \texttt{Generic} gives
+it for free, in the form of \texttt{Code\ a}
+(viz.~\texttt{Code\ (These\ a\ b)}).
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\OperatorTok{\textgreater{}} \OperatorTok{:}\NormalTok{k }\DataTypeTok{Code}\NormalTok{ (}\DataTypeTok{These} \DataTypeTok{String} \DataTypeTok{String}\NormalTok{)}
+\DataTypeTok{Code}\NormalTok{ (}\DataTypeTok{These} \DataTypeTok{String} \DataTypeTok{String}\NormalTok{)}\OtherTok{ ::}\NormalTok{ [[}\DataTypeTok{Type}\NormalTok{]]}
+\end{Highlighting}
+\end{Shaded}
+
+In brief, remember this: \texttt{Code\ a} gives us the SOP table
+\emph{type} for the datatype \texttt{a}. Now how do we get the SOP table
+\emph{value}? That is what \texttt{from} is for:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\OperatorTok{\textgreater{}} \OperatorTok{:}\NormalTok{t (unSOP }\OperatorTok{.}\NormalTok{ from }\OperatorTok{$}\NormalTok{ breakfast)}
+\NormalTok{(unSOP }\OperatorTok{.}\NormalTok{ from }\OperatorTok{$}\NormalTok{ breakfast)}
+\OtherTok{  ::} \DataTypeTok{NS}
+       \OperatorTok{@}\NormalTok{[}\DataTypeTok{Type}\NormalTok{]}
+\NormalTok{       (}\DataTypeTok{NP} \OperatorTok{@}\DataTypeTok{Type} \DataTypeTok{I}\NormalTok{)}
+\NormalTok{       ((\textquotesingle{}}\OperatorTok{:}\NormalTok{)}
+          \OperatorTok{@}\NormalTok{[}\DataTypeTok{Type}\NormalTok{]}
+\NormalTok{          ((\textquotesingle{}}\OperatorTok{:}\NormalTok{) }\OperatorTok{@}\DataTypeTok{Type}\NormalTok{ [}\DataTypeTok{Char}\NormalTok{] (\textquotesingle{}[] }\OperatorTok{@}\DataTypeTok{Type}\NormalTok{))}
+\NormalTok{          ((\textquotesingle{}}\OperatorTok{:}\NormalTok{)}
+             \OperatorTok{@}\NormalTok{[}\DataTypeTok{Type}\NormalTok{]}
+\NormalTok{             ((\textquotesingle{}}\OperatorTok{:}\NormalTok{) }\OperatorTok{@}\DataTypeTok{Type}\NormalTok{ [}\DataTypeTok{Char}\NormalTok{] (\textquotesingle{}[] }\OperatorTok{@}\DataTypeTok{Type}\NormalTok{))}
+\NormalTok{             ((\textquotesingle{}}\OperatorTok{:}\NormalTok{)}
+                \OperatorTok{@}\NormalTok{[}\DataTypeTok{Type}\NormalTok{]}
+\NormalTok{                ((\textquotesingle{}}\OperatorTok{:}\NormalTok{) }\OperatorTok{@}\DataTypeTok{Type}\NormalTok{ [}\DataTypeTok{Char}\NormalTok{] ((\textquotesingle{}}\OperatorTok{:}\NormalTok{) }\OperatorTok{@}\DataTypeTok{Type}\NormalTok{ [}\DataTypeTok{Char}\NormalTok{] (\textquotesingle{}[] }\OperatorTok{@}\DataTypeTok{Type}\NormalTok{)))}
+\NormalTok{                (\textquotesingle{}[] }\OperatorTok{@}\NormalTok{[}\DataTypeTok{Type}\NormalTok{]))))}
+\end{Highlighting}
+\end{Shaded}
+
+That is quite a mouthful because type-level lists are not represented
+cleanly in GHCi. But we can reduce it (in our mind) to the following
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\OperatorTok{\textgreater{}} \OperatorTok{:}\NormalTok{t (unSOP }\OperatorTok{.}\NormalTok{ from }\OperatorTok{$}\NormalTok{ breakfast)}
+\NormalTok{(unSOP }\OperatorTok{.}\NormalTok{ from }\OperatorTok{$}\NormalTok{ breakfast)}
+\OtherTok{  ::} \DataTypeTok{NS}\NormalTok{ (}\DataTypeTok{NP} \DataTypeTok{I}\NormalTok{) \textquotesingle{}[ [}\DataTypeTok{String}\NormalTok{], [}\DataTypeTok{String}\NormalTok{], [}\DataTypeTok{String}\NormalTok{, }\DataTypeTok{String}\NormalTok{] ]}
+\end{Highlighting}
+\end{Shaded}
+
+Notice how this is more or less isomorphic to our \texttt{TheseTable}
+definition above. We will explain the \texttt{NS} and \texttt{NP} parts
+next.
+
+\hypertarget{interlude-ns-np}{%
+\subsubsection{\texorpdfstring{Interlude: \texttt{NS} \&
+\texttt{NP}}{Interlude: NS \& NP}}\label{interlude-ns-np}}
+
+You wonder what the \texttt{NS\ (NP\ I)} part refers to in our table
+type above. \texttt{NS} is a n-ary sum; and \texttt{NP} an n-ary
+product. These are explained well in section 2 of
+\href{https://github.com/kosmikus/SSGEP/blob/master/LectureNotes.pdf}{Applying
+Type-Level and Generic Programming in Haskell}, but for our purposes -
+you can treat \texttt{NS} as similar to the \texttt{Nat} type from the
+\href{https://hackage.haskell.org/package/fin-0.2.1/docs/Data-Nat.html}{fin
+package}, and \texttt{NP} as being similar to the \texttt{Vec} type from
+the
+\href{https://hackage.haskell.org/package/vec-0.4.1/docs/Data-Vec-Lazy.html\#t:Vec}{vec
+package}.
+
+The difference is that unlike \texttt{Vec} (a homogenous list),
+\texttt{NP} is a heterogenous list whose element types are specified by
+a type-level list.
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\OperatorTok{\textgreater{}} \OperatorTok{:}\NormalTok{k }\DataTypeTok{NP} \DataTypeTok{I}\NormalTok{ \textquotesingle{}[}\DataTypeTok{String}\NormalTok{, }\DataTypeTok{Int}\NormalTok{]}
+\DataTypeTok{NP} \DataTypeTok{I}\NormalTok{ \textquotesingle{}[}\DataTypeTok{String}\NormalTok{, }\DataTypeTok{Int}\NormalTok{]}\OtherTok{ ::} \DataTypeTok{Type}
+\end{Highlighting}
+\end{Shaded}
+
+Just like \texttt{Vec} can enforce the size of its homogenous list,
+\texttt{NP} is a heterogenous list of exactly size 2. However, unlike
+\texttt{Vec} we also say that the first element is of type
+\texttt{String} and the second (and the last) element is of type
+\texttt{Int} (hence a heterogenous list). To create a value of this
+heterogeneous list:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\OperatorTok{\textgreater{}} \DataTypeTok{I} \StringTok{"Meaning"} \OperatorTok{:*} \DataTypeTok{I} \DecValTok{42} \OperatorTok{:*} \DataTypeTok{Nil}\OtherTok{  ::} \DataTypeTok{NP} \DataTypeTok{I}\NormalTok{ \textquotesingle{}[}\DataTypeTok{String}\NormalTok{, }\DataTypeTok{Int}\NormalTok{]}
+\DataTypeTok{I} \StringTok{"Meaning"} \OperatorTok{:*} \DataTypeTok{I} \DecValTok{42} \OperatorTok{:*} \DataTypeTok{Nil}
+\end{Highlighting}
+\end{Shaded}
+
+This syntax should be unsurprising because \texttt{Nil} and
+\texttt{(:*)} are the constructors of the \texttt{NP} type:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\OperatorTok{\textgreater{}} \OperatorTok{:}\NormalTok{info }\DataTypeTok{NP}
+\KeywordTok{data} \DataTypeTok{NP}\OtherTok{ ::}\NormalTok{ (k }\OtherTok{{-}\textgreater{}} \DataTypeTok{Type}\NormalTok{) }\OtherTok{{-}\textgreater{}}\NormalTok{ [k] }\OtherTok{{-}\textgreater{}} \DataTypeTok{Type} \KeywordTok{where}
+  \DataTypeTok{Nil}\OtherTok{  ::} \DataTypeTok{NP}\NormalTok{ f \textquotesingle{}[]}
+\OtherTok{  (:*) ::}\NormalTok{ f x }\OtherTok{{-}\textgreater{}} \DataTypeTok{NP}\NormalTok{ f xs }\OtherTok{{-}\textgreater{}} \DataTypeTok{NP}\NormalTok{ f (x \textquotesingle{}}\OperatorTok{:}\NormalTok{ xs)}
+\end{Highlighting}
+\end{Shaded}
+
+(\href{https://hackage.haskell.org/package/sop-core-0.5.0.2/docs/Data-SOP.html\#t:NP}{View
+haddocks})
+
+The \texttt{I} is the identity functor, but it could also be something
+else like \texttt{Maybe}:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\OperatorTok{\textgreater{}} \DataTypeTok{Nothing} \OperatorTok{:*} \DataTypeTok{Just} \DecValTok{42} \OperatorTok{:*} \DataTypeTok{Nil}\OtherTok{  ::} \DataTypeTok{NP} \DataTypeTok{Maybe}\NormalTok{ \textquotesingle{}[}\DataTypeTok{String}\NormalTok{, }\DataTypeTok{Int}\NormalTok{]}
+\DataTypeTok{Nothing} \OperatorTok{:*} \DataTypeTok{Just} \DecValTok{42} \OperatorTok{:*} \DataTypeTok{Nil}
+\end{Highlighting}
+\end{Shaded}
+
+\texttt{NS} is the same, except now we are representing the same
+characteristics (heterogeneity) but for the sum type instead of a
+product type. A sum of length `n' over some functor `f':
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\OperatorTok{\textgreater{}} \OperatorTok{:}\NormalTok{info }\DataTypeTok{NS} 
+\KeywordTok{data} \DataTypeTok{NS}\OtherTok{ ::}\NormalTok{ (k }\OtherTok{{-}\textgreater{}} \DataTypeTok{Type}\NormalTok{) }\OtherTok{{-}\textgreater{}}\NormalTok{ [k] }\OtherTok{{-}\textgreater{}} \DataTypeTok{Type} \KeywordTok{where}
+  \DataTypeTok{Z}\OtherTok{ ::}\NormalTok{ f x }\OtherTok{{-}\textgreater{}} \DataTypeTok{NS}\NormalTok{ f (x \textquotesingle{}}\OperatorTok{:}\NormalTok{ xs)}
+  \DataTypeTok{S}\OtherTok{ ::} \DataTypeTok{NS}\NormalTok{ f xs }\OtherTok{{-}\textgreater{}} \DataTypeTok{NS}\NormalTok{ f (x \textquotesingle{}}\OperatorTok{:}\NormalTok{ xs)}
+\end{Highlighting}
+\end{Shaded}
+
+(\href{https://hackage.haskell.org/package/sop-core-0.5.0.2/docs/Data-SOP.html\#t:NS}{View
+haddocks})
+
+When the value is \texttt{Z} it indicates the first sum constructor;
+when it is \texttt{S\ .\ Z} it is the second, and so on. Our
+\texttt{breakfast} value above uses \texttt{These}, which is the 3rd
+constructor. So, to construct the SOP representation of this value
+directly, we would use \texttt{S\ .\ S\ .\ Z}. This is exactly what we
+saw above (repeated here):
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{{-}{-} Note the \textasciigrave{}S . S . Z\textasciigrave{}}
+\OperatorTok{\textgreater{}}\NormalTok{ unSOP }\OperatorTok{.}\NormalTok{ from }\OperatorTok{$}\NormalTok{ breakfast}
+\DataTypeTok{S}\NormalTok{ (}\DataTypeTok{S}\NormalTok{ (}\DataTypeTok{Z}\NormalTok{ (}\DataTypeTok{I} \StringTok{"Egg"} \OperatorTok{:*} \DataTypeTok{I} \StringTok{"Sausage"} \OperatorTok{:*} \DataTypeTok{Nil}\NormalTok{)))}
+\OperatorTok{\textgreater{}}
+\OperatorTok{\textgreater{}} \OperatorTok{:}\NormalTok{t (unSOP }\OperatorTok{.}\NormalTok{ from }\OperatorTok{$}\NormalTok{ breakfast)}
+\NormalTok{(unSOP }\OperatorTok{.}\NormalTok{ from }\OperatorTok{$}\NormalTok{ breakfast)}
+\OtherTok{  ::} \DataTypeTok{NS}\NormalTok{ (}\DataTypeTok{NP} \DataTypeTok{I}\NormalTok{) \textquotesingle{}[ [}\DataTypeTok{String}\NormalTok{], [}\DataTypeTok{String}\NormalTok{], [}\DataTypeTok{String}\NormalTok{, }\DataTypeTok{String}\NormalTok{] ]}
+\end{Highlighting}
+\end{Shaded}
+
+\texttt{NS}'s functor is a \texttt{NP\ I}, and so the inner value of
+that sum choice is an n-ary product (remember: we are working with a
+sum-of-product), whose value is
+\texttt{I\ "Egg"\ :*\ I\ "Sausage"\ :*\ Nil}. Putting that product
+inside a sum, we get
+\texttt{S\ (S\ (Z\ (I\ "Egg"\ :*\ I\ "Sausage"\ :*\ Nil)))}.
+
+\hypertarget{code-as-data-data-as-code}{%
+\subsubsection{Code as data; data as
+code}\label{code-as-data-data-as-code}}
+
+Ther SOP representation of \texttt{These} can be manually constructed.
+First we build the constructor arguments (product), and then we build
+the constructor itself (sum):
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\OperatorTok{\textgreater{}} \KeywordTok{let}\NormalTok{ prod }\OtherTok{=} \DataTypeTok{I} \StringTok{"Egg"} \OperatorTok{:*} \DataTypeTok{I} \StringTok{"Sausage"} \OperatorTok{:*} \DataTypeTok{Nil}\OtherTok{ ::} \DataTypeTok{NP} \DataTypeTok{I}\NormalTok{ \textquotesingle{}[}\DataTypeTok{String}\NormalTok{, }\DataTypeTok{String}\NormalTok{]}
+\OperatorTok{\textgreater{}} \KeywordTok{let} \FunctionTok{sum} \OtherTok{=} \DataTypeTok{S} \OperatorTok{$} \DataTypeTok{S} \OperatorTok{$} \DataTypeTok{Z}\OtherTok{ prod ::} \DataTypeTok{NP} \DataTypeTok{I}\NormalTok{ \textquotesingle{}[[}\DataTypeTok{String}\NormalTok{], [}\DataTypeTok{String}\NormalTok{], [}\DataTypeTok{String}\NormalTok{, }\DataTypeTok{String}\NormalTok{]]}
+\OperatorTok{\textgreater{}} \OperatorTok{:}\NormalTok{t }\FunctionTok{sum} 
+\FunctionTok{sum}\OtherTok{ ::} \DataTypeTok{NS}\NormalTok{ (}\DataTypeTok{NP} \DataTypeTok{I}\NormalTok{) \textquotesingle{}[[}\DataTypeTok{String}\NormalTok{], [}\DataTypeTok{String}\NormalTok{], [}\DataTypeTok{String}\NormalTok{, }\DataTypeTok{String}\NormalTok{]]}
+\end{Highlighting}
+\end{Shaded}
+
+And from this representation, we can produce a value of type
+\texttt{These} easily, using
+\href{https://hackage.haskell.org/package/generics-sop-0.5.1.2/docs/Generics-SOP.html\#v:to}{\texttt{to}}:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\OperatorTok{\textgreater{}}\NormalTok{ to }\OperatorTok{@}\NormalTok{(}\DataTypeTok{These} \DataTypeTok{String} \DataTypeTok{String}\NormalTok{) (}\DataTypeTok{SOP} \FunctionTok{sum}\NormalTok{)}
+\DataTypeTok{These} \StringTok{"Egg"} \StringTok{"Sausage"}
+\end{Highlighting}
+\end{Shaded}
+
+Let us stop for a moment and reflect on what we just did. By treating
+the type-definition of \texttt{These} (``code'') as a generic
+\texttt{SOP} table (``data'') -- i.e., code as data -- we are able to
+generate a value (``code'') for that type (``data'') -- ie., data as
+code -- but without using the constructors of that type. This is generic
+programming in Haskell; you program \emph{generically}, without being
+privy to the actual type used.
+
+This concludes the section on playing with SOPs. Now let us do something
+useful.
+
+\hypertarget{example-1-generic-equality}{%
+\subsection{Example 1: generic
+equality}\label{example-1-generic-equality}}
+
+GHC's
+\href{https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/deriving_strategies.html\#deriving-strategies}{stock
+deriving} can be used to derive instances for builtin type classes, like
+\texttt{Eq}, on user-defined datatypes. This works for builtin type
+classes, but generics-sop (as well as GHC.Generics) comes in handy when
+you want to derive generically for arbitrary typeclasses. For a moment,
+let us assume that GHC had no support for stock deriving; how will we
+derive our \texttt{Eq} instance?
+
+We want a function \texttt{geq} that takes \emph{any} datatype
+\texttt{a} (this makes the function
+\href{https://www.sciencedirect.com/science/article/pii/S0167642304000152}{polytypic}),
+and does equality check on its arguments. In effect, we want:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\OtherTok{geq ::} \DataTypeTok{Generic}\NormalTok{ a }\OtherTok{=\textgreater{}}\NormalTok{ a }\OtherTok{{-}\textgreater{}}\NormalTok{ a }\OtherTok{{-}\textgreater{}} \DataTypeTok{Bool}
+\end{Highlighting}
+\end{Shaded}
+
+This function can be further broken down to operate on SOP structures
+directly, so as to ``forget'' the specific \texttt{a}:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\OtherTok{geq ::} \KeywordTok{forall}\NormalTok{ a}\OperatorTok{.} \DataTypeTok{Generic}\NormalTok{ a }\OtherTok{=\textgreater{}}\NormalTok{ a }\OtherTok{{-}\textgreater{}}\NormalTok{ a }\OtherTok{{-}\textgreater{}} \DataTypeTok{Bool}
+\NormalTok{geq x y }\OtherTok{=}\NormalTok{ geq\textquotesingle{} }\OperatorTok{@}\NormalTok{a (unSOP }\OperatorTok{$}\NormalTok{ from x) (unSOP }\OperatorTok{$}\NormalTok{ from y)}
+
+\OtherTok{geq\textquotesingle{} ::} \DataTypeTok{NS}\NormalTok{ (}\DataTypeTok{NP} \DataTypeTok{I}\NormalTok{) (}\DataTypeTok{Code}\NormalTok{ a) }\OtherTok{{-}\textgreater{}} \DataTypeTok{NS}\NormalTok{ (}\DataTypeTok{NP} \DataTypeTok{I}\NormalTok{) (}\DataTypeTok{Code}\NormalTok{ a) }\OtherTok{{-}\textgreater{}} \DataTypeTok{Bool}
+\NormalTok{geq\textquotesingle{} }\OtherTok{=} \FunctionTok{undefined}
+\end{Highlighting}
+\end{Shaded}
+
+Our problem has now been reduced to operating on SOP tables, and our
+task is to implement \texttt{geq\textquotesingle{}}.
+
+At this point you are probably thinking we can just case-match on the
+arguments, but remember that the n-ary sum type \texttt{NS} is a
+\href{https://downloads.haskell.org/~ghc/latest/docs/html/users_guide/exts/gadt.html\#gadt}{GADT}
+(its type index is
+\href{https://en.wikipedia.org/wiki/Dependent_type}{dependent} on the
+sum constructor). We have to instead case-match at the \emph{type-level}
+as it were. This is what type-classes are for. The general pattern is
+that when wanting a \texttt{foo} that case-match'es at type-level, we
+write a type-class \texttt{Foo} and write instances for each case-match
+pattern.
+
+\hypertarget{naive-implementation}{%
+\subsubsection{Naive implementation}\label{naive-implementation}}
+
+For pedagogic reasons, we begin with a naive implementation of
+\texttt{geq\textquotesingle{}} to illustrate the above. We need a
+\texttt{sumEq} function that checks equality of first constructor and
+then recurses for others; it will case-match on the outer list.
+Likewise, for each sum constructor, we will need a \texttt{prodEq} that
+checks equality of its products; and it does so, similarly, by checking
+equality of the first product and then recurses for the rest; it will
+case-match on the inner list.
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\OtherTok{geq\textquotesingle{} ::} \DataTypeTok{SumEq}\NormalTok{ (}\DataTypeTok{Code}\NormalTok{ a) }\OtherTok{=\textgreater{}} \DataTypeTok{NS}\NormalTok{ (}\DataTypeTok{NP} \DataTypeTok{I}\NormalTok{) (}\DataTypeTok{Code}\NormalTok{ a) }\OtherTok{{-}\textgreater{}} \DataTypeTok{NS}\NormalTok{ (}\DataTypeTok{NP} \DataTypeTok{I}\NormalTok{) (}\DataTypeTok{Code}\NormalTok{ a) }\OtherTok{{-}\textgreater{}} \DataTypeTok{Bool}
+\NormalTok{geq\textquotesingle{} }\OtherTok{=}\NormalTok{ sumEq}
+
+\CommentTok{{-}{-} \textasciigrave{}xss\textasciigrave{} is a type{-}level list of lists; \textasciigrave{}Code a\textasciigrave{}}
+\KeywordTok{class} \DataTypeTok{SumEq}\NormalTok{ xss }\KeywordTok{where}
+\OtherTok{  sumEq ::} \DataTypeTok{NS}\NormalTok{ (}\DataTypeTok{NP} \DataTypeTok{I}\NormalTok{) xss }\OtherTok{{-}\textgreater{}} \DataTypeTok{NS}\NormalTok{ (}\DataTypeTok{NP} \DataTypeTok{I}\NormalTok{) xss }\OtherTok{{-}\textgreater{}} \DataTypeTok{Bool}
+
+\KeywordTok{instance} \DataTypeTok{SumEq}\NormalTok{ \textquotesingle{}[] }\KeywordTok{where}
+\NormalTok{  sumEq }\OtherTok{=}\NormalTok{ \textbackslash{}}\KeywordTok{case}
+
+\KeywordTok{instance}\NormalTok{ (}\DataTypeTok{ProdEq}\NormalTok{ xs, }\DataTypeTok{SumEq}\NormalTok{ xss) }\OtherTok{=\textgreater{}} \DataTypeTok{SumEq}\NormalTok{ (xs \textquotesingle{}}\OperatorTok{:}\NormalTok{ xss) }\KeywordTok{where}
+  \CommentTok{{-}{-} Both values are the same constructor; so check equality on their products,}
+  \CommentTok{{-}{-} using \textasciigrave{}prodEq\textasciigrave{}.}
+\NormalTok{  sumEq (}\DataTypeTok{Z}\NormalTok{ x) (}\DataTypeTok{Z}\NormalTok{ y) }\OtherTok{=}\NormalTok{ prodEq x y}
+  \CommentTok{{-}{-} Recurse on next sum constructor.}
+\NormalTok{  sumEq (}\DataTypeTok{S}\NormalTok{ x) (}\DataTypeTok{S}\NormalTok{ y) }\OtherTok{=}\NormalTok{ sumEq x y}
+  \CommentTok{{-}{-} Mismatching sum constructor; equality check failed.}
+\NormalTok{  sumEq \_ \_ }\OtherTok{=} \DataTypeTok{False}
+
+\KeywordTok{class} \DataTypeTok{ProdEq}\NormalTok{ xs }\KeywordTok{where}
+\OtherTok{  prodEq ::} \DataTypeTok{NP} \DataTypeTok{I}\NormalTok{ xs }\OtherTok{{-}\textgreater{}} \DataTypeTok{NP} \DataTypeTok{I}\NormalTok{ xs }\OtherTok{{-}\textgreater{}} \DataTypeTok{Bool}
+
+\KeywordTok{instance} \DataTypeTok{ProdEq}\NormalTok{ \textquotesingle{}[] }\KeywordTok{where}
+\NormalTok{  prodEq }\DataTypeTok{Nil} \DataTypeTok{Nil} \OtherTok{=} \DataTypeTok{True}
+
+\KeywordTok{instance}\NormalTok{ (}\DataTypeTok{Eq}\NormalTok{ x, }\DataTypeTok{ProdEq}\NormalTok{ xs) }\OtherTok{=\textgreater{}} \DataTypeTok{ProdEq}\NormalTok{ (x \textquotesingle{}}\OperatorTok{:}\NormalTok{ xs) }\KeywordTok{where}
+  \CommentTok{{-}{-} First product argument should be equal; then we recurse for rest of arguments.}
+\NormalTok{  prodEq (x }\OperatorTok{:*}\NormalTok{ xs) (y }\OperatorTok{:*}\NormalTok{ ys) }\OtherTok{=}\NormalTok{ x }\OperatorTok{==}\NormalTok{ y }\OperatorTok{\&\&}\NormalTok{ prodEq xs ys}
+\end{Highlighting}
+\end{Shaded}
+
+Notice how in the first instance for \texttt{SumEq} we are ``pattern
+matching'' as it were at the type-level and defining the implementation
+for the scenario of zero sum constructors (not inhabitable). Then,
+inductively, we define the next instance using recursion. When both
+arguments are at \texttt{Z}, we match their products, using
+\texttt{prodEq} which is defined similarly. Otherwise, we recurse into
+the successor constructor (the \texttt{x} in \texttt{S\ x}). The story
+for \texttt{ProdEq} is similar.
+
+Finally, we can test that it works:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\OperatorTok{\textgreater{}}\NormalTok{ geq (}\DataTypeTok{This} \DataTypeTok{True}\NormalTok{) (}\DataTypeTok{That} \DataTypeTok{False}\NormalTok{)}
+\DataTypeTok{False}
+\OperatorTok{\textgreater{}}\NormalTok{ geq (}\DataTypeTok{These} \DecValTok{42} \StringTok{"Hello"}\NormalTok{) (}\DataTypeTok{These} \DecValTok{42} \StringTok{"Hello"}\OtherTok{ ::} \DataTypeTok{These} \DataTypeTok{Int} \DataTypeTok{String}\NormalTok{)}
+\DataTypeTok{True}
+\end{Highlighting}
+\end{Shaded}
+
+We just implemented an equality function that works for \emph{any}
+datatype (with \texttt{Generic} instance).
+
+\hypertarget{combinator-based-implementation}{%
+\subsubsection{Combinator-based
+implementation}\label{combinator-based-implementation}}
+
+Hopefully, the above naive implementation is illustratory of how one can
+``transform'' SOP structures straightforwardly using typeclasses. N-ary
+sums and products need to be processed at type-level, so it is not
+uncommon to write new type-classes to dispatch on their constructors, as
+shown above. Typically, however, you do not have to do that because
+\texttt{generics-sop} provides combinators for common operations. Here,
+we will rewrite the above implementation using these combinators.
+
+The combinators are explained in depth in
+\href{https://github.com/kosmikus/SSGEP/blob/master/LectureNotes.pdf}{ATLGP}.
+We will introduce a few in this post. The particular combinators we need
+for \texttt{geq} are:
+
+\begin{longtable}[]{@{}lll@{}}
+\toprule
+Combinator & Description & Typeclass it replaces \\
+\midrule
+\endhead
+\texttt{hcliftA2} & Lift elements of a NP or NS using given function &
+\texttt{ProdEq} \\
+\texttt{hcollapse} & Convert heterogenous structure into homogenous
+value & \texttt{ProdEq} \\
+\texttt{ccompare\_NS} & Compare two \texttt{NS} values &
+\texttt{SumEq} \\
+\bottomrule
+\end{longtable}
+
+To appreciate the value of these particular combinators, notice the 3rd
+column indicating the type-class it intends to replace. Withtout further
+ado, here is the new (compact) implementation:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\OtherTok{geq ::} \KeywordTok{forall}\NormalTok{ a}\OperatorTok{.}\NormalTok{ (}\DataTypeTok{Generic}\NormalTok{ a, }\DataTypeTok{All2} \DataTypeTok{Eq}\NormalTok{ (}\DataTypeTok{Code}\NormalTok{ a)) }\OtherTok{=\textgreater{}}\NormalTok{ a }\OtherTok{{-}\textgreater{}}\NormalTok{ a }\OtherTok{{-}\textgreater{}} \DataTypeTok{Bool}
+\NormalTok{geq x y }\OtherTok{=}\NormalTok{ geq\textquotesingle{} }\OperatorTok{@}\NormalTok{a (from x) (from y)}
+
+\OtherTok{geq\textquotesingle{} ::} \DataTypeTok{All2} \DataTypeTok{Eq}\NormalTok{ (}\DataTypeTok{Code}\NormalTok{ a) }\OtherTok{=\textgreater{}} \DataTypeTok{SOP} \DataTypeTok{I}\NormalTok{ (}\DataTypeTok{Code}\NormalTok{ a) }\OtherTok{{-}\textgreater{}} \DataTypeTok{SOP} \DataTypeTok{I}\NormalTok{ (}\DataTypeTok{Code}\NormalTok{ a) }\OtherTok{{-}\textgreater{}} \DataTypeTok{Bool}
+\NormalTok{geq\textquotesingle{} (}\DataTypeTok{SOP}\NormalTok{ c1) (}\DataTypeTok{SOP}\NormalTok{ c2) }\OtherTok{=}
+\NormalTok{  ccompare\_NS (}\DataTypeTok{Proxy} \OperatorTok{@}\NormalTok{(}\DataTypeTok{All} \DataTypeTok{Eq}\NormalTok{)) }\DataTypeTok{False}\NormalTok{ eqProd }\DataTypeTok{False}\NormalTok{ c1 c2}
+  \KeywordTok{where}
+\OtherTok{    eqProd ::} \DataTypeTok{All} \DataTypeTok{Eq}\NormalTok{ xs }\OtherTok{=\textgreater{}} \DataTypeTok{NP} \DataTypeTok{I}\NormalTok{ xs }\OtherTok{{-}\textgreater{}} \DataTypeTok{NP} \DataTypeTok{I}\NormalTok{ xs }\OtherTok{{-}\textgreater{}} \DataTypeTok{Bool}
+\NormalTok{    eqProd p1 p2 }\OtherTok{=}
+\NormalTok{      foldl\textquotesingle{} (}\OperatorTok{\&\&}\NormalTok{) }\DataTypeTok{True} \OperatorTok{$}
+\NormalTok{        hcollapse }\OperatorTok{$}\NormalTok{ hcliftA2 (}\DataTypeTok{Proxy}\OtherTok{ ::} \DataTypeTok{Proxy} \DataTypeTok{Eq}\NormalTok{) eqTerm p1 p2}
+      \KeywordTok{where}
+\OtherTok{        eqTerm ::} \KeywordTok{forall}\NormalTok{ a}\OperatorTok{.} \DataTypeTok{Eq}\NormalTok{ a }\OtherTok{=\textgreater{}} \DataTypeTok{I}\NormalTok{ a }\OtherTok{{-}\textgreater{}} \DataTypeTok{I}\NormalTok{ a }\OtherTok{{-}\textgreater{}} \DataTypeTok{K} \DataTypeTok{Bool}\NormalTok{ a}
+\NormalTok{        eqTerm a b }\OtherTok{=}
+          \DataTypeTok{K} \OperatorTok{$}\NormalTok{ a }\OperatorTok{==}\NormalTok{ b}
+\end{Highlighting}
+\end{Shaded}
+
+This code introduces two more aspects to \texttt{generics-sop}:
+
+\begin{itemize}
+\tightlist
+\item
+  \textbf{Constraint propagation}: When generically transforming SOP
+  structures we want to be able to ``propagate'' inner constraints
+  outwardly, and this is what the \texttt{Proxy} class is being used for
+  here. \texttt{All\ c\ xs} simply is an alias for
+  \texttt{(c\ x1,\ c\ x2,\ ...)} where \texttt{xs} is a type-level list;
+  likewise, \texttt{All2\ c\ xss} is \texttt{c\ x11,\ c\ x12,\ ...}
+  where \texttt{xss} is type-level list of lists (ie.,
+  \texttt{Code\ a\ \textasciitilde{}\ xss}). Clearly, we want the
+  \texttt{Eq} constraint in table elements to apply to the whole table
+  row and thereon to the table itself. And \texttt{All2\ Eq\ (Code\ a)}
+  on \texttt{geq\textquotesingle{}} specifies this.
+\item
+  \textbf{Constant functor}: The constant functor \texttt{K} is defined
+  as \texttt{data\ K\ a\ b\ =\ K\ a}; it ``discards'' the second type
+  parameter, always containing the first. Where you see
+  \texttt{K\ Bool\ a} we are discarding the polymorphic \texttt{a} (the
+  type of the cell in the table), and returning the (constant) type
+  \texttt{Bool}. When we transform the structure to be over \texttt{K}
+  (using \texttt{hcliftA2}), we are essentially making the structure
+  \emph{homogenous} in its elements, which in turn allows us to
+  ``collapse'' it using \texttt{hcollapse} to get a single value out of
+  it (which is what we need to be the result of \texttt{geq}).
+\end{itemize}
+
+This is just a brief taste of generics-sop combinators. Read
+\href{https://github.com/kosmikus/SSGEP/blob/master/LectureNotes.pdf}{ATLGP}
+for details, and we shall introduce more in the examples below.
+
+\hypertarget{interlude-specialized-combinators}{%
+\paragraph{Interlude: Specialized
+combinators}\label{interlude-specialized-combinators}}
+
+Most combinators are polymorphic over the containing structure, and as
+such their type signatures can be pretty complex to understand. For this
+reason, you might want to begin with using their \emph{monomorphized}
+versions which have simpler type signatures. For example, the
+polymorphic combinator \texttt{hcollapse} has the following signature
+that makes it possible to work with any structure (\texttt{NS} or a
+\texttt{NP}, etc).
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\OtherTok{hcollapse ::} \DataTypeTok{SListIN}\NormalTok{ h xs }\OtherTok{=\textgreater{}}\NormalTok{ h (}\DataTypeTok{K}\NormalTok{ a) xs }\OtherTok{{-}\textgreater{}} \DataTypeTok{CollapseTo}\NormalTok{ h a}
+\end{Highlighting}
+\end{Shaded}
+
+This signature is not particularly easier to understand if you are not
+very familiar with the library. But the monomorphized versions, such as
+that for \texttt{NS}, are more straightforward to understand:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\OtherTok{collapse\_NP ::} \DataTypeTok{NP}\NormalTok{ (}\DataTypeTok{K}\NormalTok{ a) xs }\OtherTok{{-}\textgreater{}}\NormalTok{ [a]}
+\end{Highlighting}
+\end{Shaded}
+
+These specialized versions typically are suffixed as above (i.e.,
+\texttt{\_NP}).
+
+\hypertarget{example-2-route-encoding}{%
+\subsection{Example 2: route encoding}\label{example-2-route-encoding}}
+
+In the first example above we demonstrated how to use generics-sop to
+generically implement \texttt{eq}. Here, we will show a more interesting
+example. Specifically, how to represent routes for a statically
+generated site using algebraic data types. We will derive encoders
+(\texttt{route\ -\textgreater{}\ FilePath}) for them automatically using
+generics-sop.
+
+Imagine you are writing a static site in Haskell\footnote{Using
+  generators like \href{https://jaspervdj.be/hakyll/}{Hakyll} or
+  \href{https://ema.srid.ca/}{Ema}} for your blog posts. Each ``route''
+in that site corresponds to a generated \texttt{.html} file. We will use
+ADTs to represent the routes:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{data} \DataTypeTok{Route}
+  \OtherTok{=} \DataTypeTok{Route\_Index} \CommentTok{{-}{-} index.html}
+  \OperatorTok{|} \DataTypeTok{Route\_Blog} \DataTypeTok{BlogRoute} \CommentTok{{-}{-} blog/*}
+
+\KeywordTok{data} \DataTypeTok{BlogRoute}
+  \OtherTok{=} \DataTypeTok{BlogRoute\_Index} \CommentTok{{-}{-} blog/index.html}
+  \OperatorTok{|} \DataTypeTok{BlogRoute\_Post} \DataTypeTok{PostSlug} \CommentTok{{-}{-} blog/$\{slug\}.html}
+
+\KeywordTok{newtype} \DataTypeTok{PostSlug} \OtherTok{=} \DataTypeTok{PostSlug}\NormalTok{ \{}\OtherTok{unPostSlug ::} \DataTypeTok{Text}\NormalTok{\}}
+\end{Highlighting}
+\end{Shaded}
+
+To compute the path to the \texttt{.html} file for each route, we need a
+function \texttt{encodeRoute\ ::\ r\ -\textgreater{}\ FilePath}. It is
+worth creating a typeclass for it because we can recursively encode the
+ADT:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{{-}{-} Class of routes that can be encoded to a filename.}
+\KeywordTok{class} \DataTypeTok{IsRoute}\NormalTok{ r }\KeywordTok{where}
+\OtherTok{  encodeRoute ::}\NormalTok{ r }\OtherTok{{-}\textgreater{}} \DataTypeTok{FilePath}
+\end{Highlighting}
+\end{Shaded}
+
+\hypertarget{manual-implementation}{%
+\subsubsection{Manual implementation}\label{manual-implementation}}
+
+Before writing generic implementation, it is always useful to write the
+implementation ``by hand''. Doing so enables us to begin to build an
+intuition for what the generic version will look like.
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{{-}{-} This instance will remain manual.}
+\KeywordTok{instance} \DataTypeTok{IsRoute} \DataTypeTok{PostSlug} \KeywordTok{where}
+\NormalTok{  encodeRoute (}\DataTypeTok{PostSlug}\NormalTok{ slug) }\OtherTok{=}\NormalTok{ T.unpack slug }\OperatorTok{\textless{}\textgreater{}} \StringTok{".html"}
+
+\CommentTok{{-}{-} These instances eventually will be generalized.}
+\KeywordTok{instance} \DataTypeTok{IsRoute} \DataTypeTok{BlogRoute} \KeywordTok{where}
+\NormalTok{  encodeRoute }\OtherTok{=}\NormalTok{ \textbackslash{}}\KeywordTok{case}
+    \DataTypeTok{BlogRoute\_Index} \OtherTok{{-}\textgreater{}} \StringTok{"index.html"}
+    \DataTypeTok{BlogRoute\_Post}\NormalTok{ slug }\OtherTok{{-}\textgreater{}} \StringTok{"post"} \OperatorTok{\textless{}/\textgreater{}}\NormalTok{ encodeRoute slug}
+
+\KeywordTok{instance} \DataTypeTok{IsRoute} \DataTypeTok{Route} \KeywordTok{where}
+\NormalTok{  encodeRoute }\OtherTok{=}\NormalTok{ \textbackslash{}}\KeywordTok{case}
+    \DataTypeTok{Route\_Index} \OtherTok{{-}\textgreater{}} \StringTok{"index.html"}
+    \DataTypeTok{Route\_Blog}\NormalTok{ br }\OtherTok{{-}\textgreater{}} \StringTok{"blog"} \OperatorTok{\textless{}/\textgreater{}}\NormalTok{ encodeRoute br}
+\end{Highlighting}
+\end{Shaded}
+
+There is nothing we can do about \texttt{PostSlug} instance because it
+is not an ADT, but we \emph{do} want to generically implement
+\texttt{encodeRoute} for both \texttt{BlogRoute} and \texttt{Route}
+generically.
+
+\hypertarget{identify-the-general-pattern}{%
+\subsubsection{Identify the general
+pattern}\label{identify-the-general-pattern}}
+
+After writing the implementation manually, the next step is to make it
+as general as possible. Try to extract the ``general pattern'' behind
+these manual implementations. Looking at the instances above, we can
+conclude the general pattern as follows:
+
+\begin{itemize}
+\tightlist
+\item
+  To encode \texttt{Foo\_Bar} in a datatype \texttt{Foo}, we drop the
+  \texttt{Foo\_}, and take the \texttt{Bar}. Then we convert it to
+  \texttt{bar.html}.
+\item
+  If a sum constructor has arguments, we check that it has exactly one
+  argument (arity \textless=1). Then call \texttt{encodeRoute} on that
+  argument, and append it to the constructor's encoding using
+  \texttt{/}.
+
+  \begin{itemize}
+  \tightlist
+  \item
+    For example, to encode \texttt{BlogPost\_Post\ (PostSlug\ "hello")}
+    we first encode the constructor as \texttt{"post"}, then encode the
+    only argument as \texttt{encodeRoute\ (PostSlug\ "hello")} which
+    reduces to \texttt{"hello.html"}, thus producing the encoding
+    \texttt{"post/hello.html"}. Finally when encoding
+    \texttt{Route\_Blog\ br} - this gets encoded ito
+    \texttt{"blog/post/hello.html"}, inductively.
+  \end{itemize}
+\end{itemize}
+
+\hypertarget{write-the-generic-version}{%
+\subsubsection{Write the generic
+version}\label{write-the-generic-version}}
+
+Having identified the general pattern, we are now able to write the
+generic version of \texttt{encodeRoute}. Keep in mind the above pattern
+while you follow the code below.
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\OtherTok{gEncodeRoute ::} \DataTypeTok{Generic}\NormalTok{ r }\OtherTok{=\textgreater{}}\NormalTok{ r }\OtherTok{{-}\textgreater{}} \DataTypeTok{FilePath}
+\NormalTok{gEncodeRoute }\OtherTok{=} \FunctionTok{undefined}
+\end{Highlighting}
+\end{Shaded}
+
+To derive route encoding from the constructor name, we need the datatype
+metadata (provided by \texttt{HasDatatypeInfo}) from generics-sop.
+\texttt{constructorInfo\ .\ datatypeInfo} gives us the constructor
+information, from which we will determine the final route encoding using
+the \texttt{hindex} combinator. Effectively, this enables us to produce
+\texttt{"foo.html"} from a sum constructor like \texttt{Route\_Foo}.
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\OtherTok{gEncodeRoute ::} \KeywordTok{forall}\NormalTok{ r}\OperatorTok{.}\NormalTok{ (}\DataTypeTok{Generic}\NormalTok{ r, }\DataTypeTok{All2} \DataTypeTok{IsRoute}\NormalTok{ (}\DataTypeTok{Code}\NormalTok{ r), }\DataTypeTok{All} \DataTypeTok{IsRouteProd}\NormalTok{ (}\DataTypeTok{Code}\NormalTok{ r), }\DataTypeTok{HasDatatypeInfo}\NormalTok{ r) }\OtherTok{=\textgreater{}}\NormalTok{ r }\OtherTok{{-}\textgreater{}} \DataTypeTok{FilePath}
+\NormalTok{gEncodeRoute x }\OtherTok{=}\NormalTok{ gEncodeRoute\textquotesingle{} }\OperatorTok{@}\NormalTok{r (from x)}
+
+\OtherTok{gEncodeRoute\textquotesingle{} ::} \KeywordTok{forall}\NormalTok{ r}\OperatorTok{.}\NormalTok{ (}\DataTypeTok{All2} \DataTypeTok{IsRoute}\NormalTok{ (}\DataTypeTok{Code}\NormalTok{ r), }\DataTypeTok{All} \DataTypeTok{IsRouteProd}\NormalTok{ (}\DataTypeTok{Code}\NormalTok{ r), }\DataTypeTok{HasDatatypeInfo}\NormalTok{ r) }\OtherTok{=\textgreater{}} \DataTypeTok{SOP} \DataTypeTok{I}\NormalTok{ (}\DataTypeTok{Code}\NormalTok{ r) }\OtherTok{{-}\textgreater{}} \DataTypeTok{FilePath}
+\NormalTok{gEncodeRoute\textquotesingle{} (}\DataTypeTok{SOP}\NormalTok{ x) }\OtherTok{=}
+  \CommentTok{{-}{-} Determine the contructor name and then strip its prefix.}
+  \KeywordTok{let}\OtherTok{ ctorNames ::}\NormalTok{ [}\DataTypeTok{ConstructorName}\NormalTok{] }\OtherTok{=}
+\NormalTok{        hcollapse }\OperatorTok{$}\NormalTok{ hmap (}\DataTypeTok{K} \OperatorTok{.}\NormalTok{ constructorName) }\OperatorTok{$}\NormalTok{ datatypeCtors }\OperatorTok{@}\NormalTok{r}
+\NormalTok{      ctorName }\OtherTok{=}\NormalTok{ ctorNames }\OperatorTok{!!}\NormalTok{ hindex x}
+\NormalTok{      ctorSuffix }\OtherTok{=}\NormalTok{ ctorStripPrefix }\OperatorTok{@}\NormalTok{r ctorName}
+  \CommentTok{{-}{-} Encode the product argument, if any, otherwise end the route string with ".html"}
+   \KeywordTok{in} \KeywordTok{case}\NormalTok{ hcollapse }\OperatorTok{$}\NormalTok{ hcmap (}\DataTypeTok{Proxy} \OperatorTok{@}\DataTypeTok{IsRouteProd}\NormalTok{) encProd x }\KeywordTok{of}
+        \DataTypeTok{Nothing} \OtherTok{{-}\textgreater{}}\NormalTok{ ctorSuffix }\OperatorTok{\textless{}\textgreater{}} \StringTok{".html"}
+        \DataTypeTok{Just}\NormalTok{ p }\OtherTok{{-}\textgreater{}}\NormalTok{ ctorSuffix }\OperatorTok{\textless{}/\textgreater{}}\NormalTok{ p}
+  \KeywordTok{where}
+\OtherTok{    encProd ::}\NormalTok{ (}\DataTypeTok{IsRouteProd}\NormalTok{ xs) }\OtherTok{=\textgreater{}} \DataTypeTok{NP} \DataTypeTok{I}\NormalTok{ xs }\OtherTok{{-}\textgreater{}} \DataTypeTok{K}\NormalTok{ (}\DataTypeTok{Maybe} \DataTypeTok{FilePath}\NormalTok{) xs}
+\NormalTok{    encProd }\OtherTok{=}
+      \DataTypeTok{K} \OperatorTok{.}\NormalTok{ hcollapseMaybe }\OperatorTok{.}\NormalTok{ hcmap (}\DataTypeTok{Proxy} \OperatorTok{@}\DataTypeTok{IsRoute}\NormalTok{) encTerm}
+\OtherTok{    encTerm ::} \DataTypeTok{IsRoute}\NormalTok{ b }\OtherTok{=\textgreater{}} \DataTypeTok{I}\NormalTok{ b }\OtherTok{{-}\textgreater{}} \DataTypeTok{K} \DataTypeTok{FilePath}\NormalTok{ b}
+\NormalTok{    encTerm }\OtherTok{=}
+      \DataTypeTok{K} \OperatorTok{.}\NormalTok{ encodeRoute }\OperatorTok{.}\NormalTok{ unI}
+
+\OtherTok{datatypeCtors ::} \KeywordTok{forall}\NormalTok{ a}\OperatorTok{.} \DataTypeTok{HasDatatypeInfo}\NormalTok{ a }\OtherTok{=\textgreater{}} \DataTypeTok{NP} \DataTypeTok{ConstructorInfo}\NormalTok{ (}\DataTypeTok{Code}\NormalTok{ a)}
+\NormalTok{datatypeCtors }\OtherTok{=}\NormalTok{ constructorInfo }\OperatorTok{$}\NormalTok{ datatypeInfo (}\DataTypeTok{Proxy} \OperatorTok{@}\NormalTok{a)}
+
+\OtherTok{ctorStripPrefix ::} \KeywordTok{forall}\NormalTok{ a}\OperatorTok{.} \DataTypeTok{HasDatatypeInfo}\NormalTok{ a }\OtherTok{=\textgreater{}} \DataTypeTok{ConstructorName} \OtherTok{{-}\textgreater{}} \DataTypeTok{String}
+\NormalTok{ctorStripPrefix ctorName }\OtherTok{=}
+  \KeywordTok{let}\NormalTok{ name }\OtherTok{=}\NormalTok{ datatypeName }\OperatorTok{$}\NormalTok{ datatypeInfo (}\DataTypeTok{Proxy} \OperatorTok{@}\NormalTok{a)}
+   \KeywordTok{in} \FunctionTok{maybe}\NormalTok{ (}\FunctionTok{error} \StringTok{"ctor: bad naming"}\NormalTok{) (T.unpack }\OperatorTok{.}\NormalTok{ T.toLower) }\OperatorTok{$}
+\NormalTok{        T.stripPrefix (T.pack }\OperatorTok{$}\NormalTok{ name }\OperatorTok{\textless{}\textgreater{}} \StringTok{"\_"}\NormalTok{) (T.pack ctorName)}
+\end{Highlighting}
+\end{Shaded}
+
+\texttt{hcollapse} should be familiar; and \texttt{hcmap} is just an
+alias of \texttt{hcliftA} (analogous to \texttt{hcliftA2} used in the
+above example). New here is \texttt{hcollapseMaybe} which is a custom
+version of \texttt{hcollapse} we defined to constrain the number of
+products to be either zero or one (as it would not make sense for a
+route tye otherwise); its full implementation\footnote{In particular, we
+  create a \texttt{HCollapseMaybe} constraint that limits
+  \texttt{hcollapse} to work on at most 1 product:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{class} \DataTypeTok{HCollapseMaybe}\NormalTok{ h xs }\KeywordTok{where}
+\OtherTok{  hcollapseMaybe ::} \DataTypeTok{SListIN}\NormalTok{ h xs }\OtherTok{=\textgreater{}}\NormalTok{ h (}\DataTypeTok{K}\NormalTok{ a) xs }\OtherTok{{-}\textgreater{}} \DataTypeTok{Maybe}\NormalTok{ a}
+
+\KeywordTok{instance} \DataTypeTok{HCollapseMaybe} \DataTypeTok{NP}\NormalTok{ \textquotesingle{}[] }\KeywordTok{where}
+\NormalTok{  hcollapseMaybe \_ }\OtherTok{=} \DataTypeTok{Nothing}
+
+\KeywordTok{instance} \DataTypeTok{HCollapseMaybe} \DataTypeTok{NP}\NormalTok{ \textquotesingle{}[p] }\KeywordTok{where}
+\NormalTok{  hcollapseMaybe (}\DataTypeTok{K}\NormalTok{ x }\OperatorTok{:*} \DataTypeTok{Nil}\NormalTok{) }\OtherTok{=} \DataTypeTok{Just}\NormalTok{ x}
+
+\KeywordTok{instance}\NormalTok{ (ps }\OperatorTok{\textasciitilde{}} \DataTypeTok{TypeError}\NormalTok{ (}\DataTypeTok{\textquotesingle{}Text} \StringTok{"Expected at most 1 product"}\NormalTok{)) }\OtherTok{=\textgreater{}} \DataTypeTok{HCollapseMaybe} \DataTypeTok{NP}\NormalTok{ (p \textquotesingle{}}\OperatorTok{:}\NormalTok{ p1 \textquotesingle{}}\OperatorTok{:}\NormalTok{ ps) }\KeywordTok{where}
+\NormalTok{  hcollapseMaybe \_ }\OtherTok{=} \DataTypeTok{Nothing} \CommentTok{{-}{-} Unreachable}
+
+\KeywordTok{class}\NormalTok{ (}\DataTypeTok{All} \DataTypeTok{IsRoute}\NormalTok{ xs, }\DataTypeTok{HCollapseMaybe} \DataTypeTok{NP}\NormalTok{ xs) }\OtherTok{=\textgreater{}} \DataTypeTok{IsRouteProd}\NormalTok{ xs}
+
+\KeywordTok{instance}\NormalTok{ (}\DataTypeTok{All} \DataTypeTok{IsRoute}\NormalTok{ xs, }\DataTypeTok{HCollapseMaybe} \DataTypeTok{NP}\NormalTok{ xs) }\OtherTok{=\textgreater{}} \DataTypeTok{IsRouteProd}\NormalTok{ xs}
+\end{Highlighting}
+\end{Shaded}
+
+  Then we change \texttt{encProd} to be:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\OtherTok{encProd ::}\NormalTok{ (}\DataTypeTok{IsRouteProd}\NormalTok{ xs) }\OtherTok{=\textgreater{}} \DataTypeTok{NP} \DataTypeTok{I}\NormalTok{ xs }\OtherTok{{-}\textgreater{}} \DataTypeTok{K}\NormalTok{ (}\DataTypeTok{Maybe} \DataTypeTok{FilePath}\NormalTok{) xs}
+\NormalTok{encProd }\OtherTok{=}
+  \DataTypeTok{K} \OperatorTok{.}\NormalTok{ hcollapseMaybe }\OperatorTok{.}\NormalTok{ hcmap (}\DataTypeTok{Proxy} \OperatorTok{@}\DataTypeTok{IsRoute}\NormalTok{) encTerm}
+\end{Highlighting}
+\end{Shaded}
+
+  While propagating the \texttt{All\ IsRouteProd\ (Code\ r)} constraint
+  all the way up.} is available in the
+\href{https://github.com/srid/generics-sop-examples/blob/master/src/RouteEncoding.hs}{source}.
+
+Finally, we make use of
+\href{https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/default_signatures.html}{\texttt{DefaultSignatures}}
+to provide a default implementation in the \texttt{IsRoute} class:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{class} \DataTypeTok{IsRoute}\NormalTok{ r }\KeywordTok{where}
+\OtherTok{  encodeRoute ::}\NormalTok{ r }\OtherTok{{-}\textgreater{}} \DataTypeTok{FilePath}
+\NormalTok{  default}\OtherTok{ encodeRoute ::}
+\NormalTok{    (}\DataTypeTok{Generic}\NormalTok{ r, }\DataTypeTok{All2} \DataTypeTok{IsRoute}\NormalTok{ (}\DataTypeTok{Code}\NormalTok{ r), }\DataTypeTok{HasDatatypeInfo}\NormalTok{ r) }\OtherTok{=\textgreater{}}
+\NormalTok{    r }\OtherTok{{-}\textgreater{}}
+    \DataTypeTok{FilePath}
+\NormalTok{  encodeRoute }\OtherTok{=}\NormalTok{ gEncodeRoute}
+\end{Highlighting}
+\end{Shaded}
+
+This, in turn, allows us to derive \texttt{IsRoute} arbitrarily via
+\href{https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/deriving_strategies.html}{\texttt{DeriveAnyClass}},
+which is to say that we get our \texttt{IsRoute} instances for ``free'':
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{data} \DataTypeTok{Route}
+  \OtherTok{=} \DataTypeTok{Route\_Foo}
+  \OperatorTok{|} \DataTypeTok{Route\_Blog} \DataTypeTok{BlogRoute}
+  \KeywordTok{deriving}\NormalTok{ stock (}\DataTypeTok{GHC.Generic}\NormalTok{, }\DataTypeTok{Eq}\NormalTok{, }\DataTypeTok{Show}\NormalTok{)}
+  \KeywordTok{deriving}\NormalTok{ anyclass (}\DataTypeTok{Generic}\NormalTok{, }\DataTypeTok{HasDatatypeInfo}\NormalTok{, }\DataTypeTok{IsRoute}\NormalTok{)}\OtherTok{\textasciigrave{}}
+\end{Highlighting}
+\end{Shaded}
+
+\texttt{encodeRoute\ Route\_Foo} now returns \texttt{"foo.html"} and
+\texttt{encodeRoute\ \$\ Route\_Blog\ BlogRoute\_Index} returns
+\texttt{"blog/index.html"}, all without needing boilerplate
+implementation.
+
+\hypertarget{example-3-route-decoding}{%
+\subsection{Example 3: route decoding}\label{example-3-route-decoding}}
+
+As a final example, we shall demonstrate what it takes to
+\emph{construct} new values. Naturally, our \texttt{IsRoute} class above
+needs a new method, \texttt{decodeRoute} for the reverse conversion
+(perhaps you want to check the validity of links in the generated HTML):
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{class} \DataTypeTok{IsRoute}\NormalTok{ r }\KeywordTok{where}
+  \CommentTok{{-}{-} | Encode a route to file path on disk.}
+\OtherTok{  encodeRoute ::}\NormalTok{ r }\OtherTok{{-}\textgreater{}} \DataTypeTok{FilePath}
+  \CommentTok{{-}{-} | Decode a route from its encoded filepath}
+\OtherTok{  decodeRoute ::} \DataTypeTok{FilePath} \OtherTok{{-}\textgreater{}} \DataTypeTok{Maybe}\NormalTok{ r}
+
+\OtherTok{gDecodeRoute ::} \KeywordTok{forall}\NormalTok{ r}\OperatorTok{.}\NormalTok{ (}\DataTypeTok{Generic}\NormalTok{ r, }\DataTypeTok{All2} \DataTypeTok{IsRoute}\NormalTok{ (}\DataTypeTok{Code}\NormalTok{ r), }\DataTypeTok{HasDatatypeInfo}\NormalTok{ r) }\OtherTok{=\textgreater{}} \DataTypeTok{FilePath} \OtherTok{{-}\textgreater{}} \DataTypeTok{Maybe}\NormalTok{ r}
+\NormalTok{gDecodeRoute fp }\OtherTok{=} \FunctionTok{undefined}
+\end{Highlighting}
+\end{Shaded}
+
+\hypertarget{slist}{%
+\subsubsection{\texorpdfstring{\texttt{SList}}{SList}}\label{slist}}
+
+Generically constructing values is a little more involved, where it
+useful to know about singleton for type-level lists, \texttt{SList}.
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\KeywordTok{data} \DataTypeTok{SList}\OtherTok{ ::}\NormalTok{ [k] }\OtherTok{{-}\textgreater{}} \DataTypeTok{Type} \KeywordTok{where}
+  \DataTypeTok{SNil}\OtherTok{  ::} \DataTypeTok{SList}\NormalTok{ \textquotesingle{}[]}
+  \DataTypeTok{SCons}\OtherTok{ ::} \DataTypeTok{SListI}\NormalTok{ xs }\OtherTok{=\textgreater{}} \DataTypeTok{SList}\NormalTok{ (x \textquotesingle{}}\OperatorTok{:}\NormalTok{ xs)}
+
+\CommentTok{{-}{-} | Get hold of an explicit singleton (that one can then}
+\CommentTok{{-}{-} pattern match on) for a type{-}level list}
+\CommentTok{{-}{-}}
+\OtherTok{sList ::} \DataTypeTok{SListI}\NormalTok{ xs }\OtherTok{=\textgreater{}} \DataTypeTok{SList}\NormalTok{ xs}
+\NormalTok{sList }\OtherTok{=} \OperatorTok{...}
+\end{Highlighting}
+\end{Shaded}
+
+We require heavy use of \texttt{sList} to generically implement
+\texttt{decodeRoute}. \texttt{sList} pretty much allows us to
+``case-match'' on the type-level list and build our combinators
+accordingly, as we will see below.
+
+\hypertarget{anamomrphism-combinators}{%
+\subsubsection{Anamomrphism
+combinators}\label{anamomrphism-combinators}}
+
+To implement \texttt{decodeRoute} generically, we are looking to
+construct a \texttt{NS\ (NP\ I)\ (Code\ r)} depending on which
+constructor the first path segment of \texttt{fp} matches with. Then, we
+recurse into constructing the inner route for the sum constructor's
+(only and optional) product type. This recursive building of values is
+called
+\href{https://en.wikipedia.org/wiki/Anamorphism\#Anamorphisms_in_functional_programming}{anamorphism}.
+In particular, we need two anamorphisms: one for the outer sum and
+another for the inner product.
+
+\texttt{generics-sop} already provides
+\href{https://hackage.haskell.org/package/sop-core-0.5.0.2/docs/Data-SOP-NS.html\#v:cana_NS}{\texttt{cana\_NS}}
+and
+\href{https://hackage.haskell.org/package/sop-core-0.5.0.2/docs/Data-SOP-NP.html\#v:cana_NP}{\texttt{cana\_NP}}
+as anamorphisms for \texttt{NS} and \texttt{NP} respectively. However we
+need a slightly different version of them, to return \texttt{Maybe}
+values instead. We shall define them (prefixed with \texttt{m})
+accordingly as follows (note the use of \texttt{sList}):
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{{-}{-} | Like \textasciigrave{}cana\_NS\textasciigrave{} but returns a Maybe}
+\OtherTok{mcana\_NS ::}
+  \KeywordTok{forall}\NormalTok{ c proxy s f xs}\OperatorTok{.}
+\NormalTok{  (}\DataTypeTok{All}\NormalTok{ c xs) }\OtherTok{=\textgreater{}}
+\NormalTok{  proxy c }\OtherTok{{-}\textgreater{}}
+\NormalTok{  (}\KeywordTok{forall}\NormalTok{ y ys}\OperatorTok{.}\NormalTok{ c y }\OtherTok{=\textgreater{}}\NormalTok{ s (y \textquotesingle{}}\OperatorTok{:}\NormalTok{ ys) }\OtherTok{{-}\textgreater{}} \DataTypeTok{Either}\NormalTok{ (}\DataTypeTok{Maybe}\NormalTok{ (f y)) (s ys)) }\OtherTok{{-}\textgreater{}}
+\NormalTok{  s xs }\OtherTok{{-}\textgreater{}}
+  \DataTypeTok{Maybe}\NormalTok{ (}\DataTypeTok{NS}\NormalTok{ f xs)}
+\NormalTok{mcana\_NS \_ decide }\OtherTok{=}\NormalTok{ go sList}
+  \KeywordTok{where}
+\OtherTok{    go ::} \KeywordTok{forall}\NormalTok{ ys}\OperatorTok{.}\NormalTok{ (}\DataTypeTok{All}\NormalTok{ c ys) }\OtherTok{=\textgreater{}} \DataTypeTok{SList}\NormalTok{ ys }\OtherTok{{-}\textgreater{}}\NormalTok{ s ys }\OtherTok{{-}\textgreater{}} \DataTypeTok{Maybe}\NormalTok{ (}\DataTypeTok{NS}\NormalTok{ f ys)}
+\NormalTok{    go }\DataTypeTok{SNil}\NormalTok{ \_ }\OtherTok{=} \DataTypeTok{Nothing}
+\NormalTok{    go }\DataTypeTok{SCons}\NormalTok{ s }\OtherTok{=} \KeywordTok{case}\NormalTok{ decide s }\KeywordTok{of}
+      \DataTypeTok{Left}\NormalTok{ x }\OtherTok{{-}\textgreater{}} \DataTypeTok{Z} \OperatorTok{\textless{}$\textgreater{}}\NormalTok{ x}
+      \DataTypeTok{Right}\NormalTok{ s\textquotesingle{} }\OtherTok{{-}\textgreater{}} \DataTypeTok{S} \OperatorTok{\textless{}$\textgreater{}}\NormalTok{ go sList s\textquotesingle{}}
+
+\CommentTok{{-}{-} | Like \textasciigrave{}cana\_NP\textasciigrave{} but returns a Maybe}
+\OtherTok{mcana\_NP ::}
+  \KeywordTok{forall}\NormalTok{ c proxy s f xs}\OperatorTok{.}
+\NormalTok{  (}\DataTypeTok{All}\NormalTok{ c xs) }\OtherTok{=\textgreater{}}
+\NormalTok{  proxy c }\OtherTok{{-}\textgreater{}}
+\NormalTok{  (}\KeywordTok{forall}\NormalTok{ y ys}\OperatorTok{.}\NormalTok{ (c y, }\DataTypeTok{SListI}\NormalTok{ ys) }\OtherTok{=\textgreater{}}\NormalTok{ s (y \textquotesingle{}}\OperatorTok{:}\NormalTok{ ys) }\OtherTok{{-}\textgreater{}} \DataTypeTok{Maybe}\NormalTok{ (f y, s ys)) }\OtherTok{{-}\textgreater{}}
+\NormalTok{  s xs }\OtherTok{{-}\textgreater{}}
+  \DataTypeTok{Maybe}\NormalTok{ (}\DataTypeTok{NP}\NormalTok{ f xs)}
+\NormalTok{mcana\_NP \_ uncons }\OtherTok{=}\NormalTok{ go sList}
+  \KeywordTok{where}
+\OtherTok{    go ::} \KeywordTok{forall}\NormalTok{ ys}\OperatorTok{.}\NormalTok{ (}\DataTypeTok{All}\NormalTok{ c ys) }\OtherTok{=\textgreater{}} \DataTypeTok{SList}\NormalTok{ ys }\OtherTok{{-}\textgreater{}}\NormalTok{ s ys }\OtherTok{{-}\textgreater{}} \DataTypeTok{Maybe}\NormalTok{ (}\DataTypeTok{NP}\NormalTok{ f ys)}
+\NormalTok{    go }\DataTypeTok{SNil}\NormalTok{ \_ }\OtherTok{=} \FunctionTok{pure} \DataTypeTok{Nil}
+\NormalTok{    go }\DataTypeTok{SCons}\NormalTok{ s }\OtherTok{=} \KeywordTok{do}
+\NormalTok{      (x, s\textquotesingle{}) }\OtherTok{\textless{}{-}}\NormalTok{ uncons s}
+\NormalTok{      xs }\OtherTok{\textless{}{-}}\NormalTok{ go sList s\textquotesingle{}}
+      \FunctionTok{pure} \OperatorTok{$}\NormalTok{ x }\OperatorTok{:*}\NormalTok{ xs}
+\end{Highlighting}
+\end{Shaded}
+
+\hypertarget{implement-gdecoderoute}{%
+\subsubsection{\texorpdfstring{Implement
+\texttt{gDecodeRoute}}{Implement gDecodeRoute}}\label{implement-gdecoderoute}}
+
+Now we are ready to use a combination of \texttt{sList},
+\texttt{mcana\_NS} and \texttt{mcana\_NP} to implement
+\texttt{gDecodeRoute}:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\OtherTok{gDecodeRoute ::} \KeywordTok{forall}\NormalTok{ r}\OperatorTok{.}\NormalTok{ (}\DataTypeTok{Generic}\NormalTok{ r, }\DataTypeTok{All} \DataTypeTok{IsRouteProd}\NormalTok{ (}\DataTypeTok{Code}\NormalTok{ r), }\DataTypeTok{All2} \DataTypeTok{IsRoute}\NormalTok{ (}\DataTypeTok{Code}\NormalTok{ r), }\DataTypeTok{HasDatatypeInfo}\NormalTok{ r) }\OtherTok{=\textgreater{}} \DataTypeTok{FilePath} \OtherTok{{-}\textgreater{}} \DataTypeTok{Maybe}\NormalTok{ r}
+\NormalTok{gDecodeRoute fp }\OtherTok{=} \KeywordTok{do}
+  \CommentTok{{-}{-} We operate on first element of the filepath, and inductively decode the rest.}
+\NormalTok{  basePath }\OperatorTok{:}\NormalTok{ restPath }\OtherTok{\textless{}{-}} \FunctionTok{pure} \OperatorTok{$}\NormalTok{ splitDirectories fp}
+  \CommentTok{{-}{-} Build the sum using an anamorphism}
+\NormalTok{  to }\OperatorTok{.} \DataTypeTok{SOP}
+    \OperatorTok{\textless{}$\textgreater{}}\NormalTok{ mcana\_NS }\OperatorTok{@}\DataTypeTok{IsRouteProd} \OperatorTok{@}\NormalTok{\_ }\OperatorTok{@}\NormalTok{\_ }\OperatorTok{@}\NormalTok{(}\DataTypeTok{NP} \DataTypeTok{I}\NormalTok{)}
+      \DataTypeTok{Proxy}
+\NormalTok{      (anamorphismSum basePath restPath)}
+\NormalTok{      (datatypeCtors }\OperatorTok{@}\NormalTok{r)}
+  \KeywordTok{where}
+    \CommentTok{{-}{-} The \textasciigrave{}base\textasciigrave{} part of the path should correspond to the constructor name. }
+\OtherTok{    anamorphismSum ::} \KeywordTok{forall}\NormalTok{ xs xss}\OperatorTok{.} \DataTypeTok{IsRouteProd}\NormalTok{ xs }\OtherTok{=\textgreater{}} \DataTypeTok{FilePath} \OtherTok{{-}\textgreater{}}\NormalTok{ [}\DataTypeTok{FilePath}\NormalTok{] }\OtherTok{{-}\textgreater{}} \DataTypeTok{NP} \DataTypeTok{ConstructorInfo}\NormalTok{ (xs \textquotesingle{}}\OperatorTok{:}\NormalTok{ xss) }\OtherTok{{-}\textgreater{}} \DataTypeTok{Either}\NormalTok{ (}\DataTypeTok{Maybe}\NormalTok{ (}\DataTypeTok{NP} \DataTypeTok{I}\NormalTok{ xs)) (}\DataTypeTok{NP} \DataTypeTok{ConstructorInfo}\NormalTok{ xss)}
+\NormalTok{    anamorphismSum base rest (p }\OperatorTok{:*}\NormalTok{ ps) }\OtherTok{=}
+\NormalTok{      fromMaybe (}\DataTypeTok{Right}\NormalTok{ ps) }\OperatorTok{$} \KeywordTok{do}
+        \KeywordTok{let}\NormalTok{ ctorSuffix }\OtherTok{=}\NormalTok{ ctorStripPrefix }\OperatorTok{@}\NormalTok{r (constructorName p)}
+        \DataTypeTok{Left} \OperatorTok{\textless{}$\textgreater{}} \KeywordTok{case}\NormalTok{ sList }\OperatorTok{@}\NormalTok{xs }\KeywordTok{of}
+          \DataTypeTok{SNil} \OtherTok{{-}\textgreater{}} \KeywordTok{do}
+            \CommentTok{{-}{-} For constructors without arguments, we simply expect the \textasciigrave{}rest\textasciigrave{}}
+            \CommentTok{{-}{-} of the path to be empty.}
+\NormalTok{            guard }\OperatorTok{$}\NormalTok{ ctorSuffix }\OperatorTok{\textless{}\textgreater{}} \StringTok{".html"} \OperatorTok{==}\NormalTok{ base }\OperatorTok{\&\&} \FunctionTok{null}\NormalTok{ rest}
+            \FunctionTok{pure} \OperatorTok{$} \DataTypeTok{Just} \DataTypeTok{Nil}
+          \DataTypeTok{SCons} \OtherTok{{-}\textgreater{}} \KeywordTok{do}
+            \CommentTok{{-}{-} For constructors with an argument, we ensure that the constructor}
+            \CommentTok{{-}{-} name matches the base part and then recurse into decoding the}
+            \CommentTok{{-}{-} argument itself.}
+\NormalTok{            guard }\OperatorTok{$}\NormalTok{ ctorSuffix }\OperatorTok{==}\NormalTok{ base}
+            \FunctionTok{pure} \OperatorTok{$}
+\NormalTok{              mcana\_NP }\OperatorTok{@}\NormalTok{\_ }\OperatorTok{@}\NormalTok{\_ }\OperatorTok{@}\NormalTok{\_ }\OperatorTok{@}\DataTypeTok{I}
+\NormalTok{                (}\DataTypeTok{Proxy} \OperatorTok{@}\DataTypeTok{IsRoute}\NormalTok{)}
+\NormalTok{                anamorphismProduct}
+                \DataTypeTok{Proxy}
+      \KeywordTok{where}
+\OtherTok{        anamorphismProduct ::} \KeywordTok{forall}\NormalTok{ y1 ys1}\OperatorTok{.}\NormalTok{ (}\DataTypeTok{IsRoute}\NormalTok{ y1, }\DataTypeTok{SListI}\NormalTok{ ys1) }\OtherTok{=\textgreater{}} \DataTypeTok{Proxy}\NormalTok{ (y1 \textquotesingle{}}\OperatorTok{:}\NormalTok{ ys1) }\OtherTok{{-}\textgreater{}} \DataTypeTok{Maybe}\NormalTok{ (}\DataTypeTok{I}\NormalTok{ y1, }\DataTypeTok{Proxy}\NormalTok{ ys1)}
+\NormalTok{        anamorphismProduct }\DataTypeTok{Proxy} \OtherTok{=} \KeywordTok{case}\NormalTok{ sList }\OperatorTok{@}\NormalTok{ys1 }\KeywordTok{of}
+          \CommentTok{{-}{-} We "case match" on the rest of the products, to handle the scenario}
+          \CommentTok{{-}{-} of there being exactly one product.}
+          \DataTypeTok{SNil} \OtherTok{{-}\textgreater{}} \KeywordTok{do}
+            \CommentTok{{-}{-} Recurse into the only product argument}
+\NormalTok{            guard }\OperatorTok{$} \FunctionTok{not} \OperatorTok{$} \FunctionTok{null}\NormalTok{ rest}
+\NormalTok{            r\textquotesingle{} }\OtherTok{\textless{}{-}}\NormalTok{ decodeRoute }\OperatorTok{@}\NormalTok{y1 }\OperatorTok{$}\NormalTok{ joinPath rest}
+            \FunctionTok{pure}\NormalTok{ (}\DataTypeTok{I}\NormalTok{ r\textquotesingle{}, }\DataTypeTok{Proxy}\NormalTok{)}
+          \DataTypeTok{SCons} \OtherTok{{-}\textgreater{}}
+            \CommentTok{{-}{-} Not reachable, due to HCollapseMaybe constraint}
+            \DataTypeTok{Nothing}
+\end{Highlighting}
+\end{Shaded}
+
+We split the path \texttt{fp} and process the first path segment by
+matching it with one of the sum constructors. In \texttt{anamorphismSum}
+we handle the two cases of null product constructor and singleton
+product constructor (\texttt{mcana\_NS} is responsible for recursing
+into other sum constructors). For null product, we match the file path
+with ``\$\{constructorSuffix\}.html'' and return immediately. For a
+single product case, we use \texttt{mcana\_NP} to build the product.
+\texttt{anammorphismProduct} uses \texttt{sList} to case match on the
+rest of the products (i.e.~2nd, etc.) - and calls \texttt{decodeRoute}
+on the first product only if the rest is empty, which in turn requires
+us to the \texttt{IsRoute} constraint all the way above.
+
+Finally, we use \texttt{DefaultSignatures} to specify a default
+implementation in \texttt{IsRoute} class.
+
+\hypertarget{putting-it-all-together}{%
+\subsubsection{Putting it all together}\label{putting-it-all-together}}
+
+We can test that our code works in ghci:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\OperatorTok{\textgreater{}} \KeywordTok{import} \DataTypeTok{RouteEncoding} 
+\OperatorTok{\textgreater{}}\NormalTok{ encodeRoute }\DataTypeTok{Route\_Index}
+\StringTok{"index.html"}
+\OperatorTok{\textgreater{}}\NormalTok{ decodeRoute }\OperatorTok{@}\DataTypeTok{Route} \OperatorTok{$}\NormalTok{ encodeRoute }\DataTypeTok{Route\_Index}
+\DataTypeTok{Just} \DataTypeTok{Route\_Index}
+\end{Highlighting}
+\end{Shaded}
+
+To be completely sure, we can test it with inductive route values:
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\OperatorTok{\textgreater{}}\NormalTok{ encodeRoute }\OperatorTok{$} \DataTypeTok{Route\_Blog} \OperatorTok{$} \DataTypeTok{BlogRoute\_Post} \StringTok{"hello"}
+\StringTok{"blog/post/hello.html"}
+\OperatorTok{\textgreater{}}\NormalTok{ decodeRoute }\OperatorTok{@}\DataTypeTok{Route} \StringTok{"blog/post/hello.html"}
+\DataTypeTok{Just}\NormalTok{ (}\DataTypeTok{Route\_Blog}\NormalTok{ (}\DataTypeTok{BlogRoute\_Post} \StringTok{"hello"}\NormalTok{))}
+\OperatorTok{\textgreater{}} 
+\end{Highlighting}
+\end{Shaded}
+
+This concludes our introduction to \texttt{generics-sop}.
+
+\hypertarget{further-information}{%
+\subsection{Further information}\label{further-information}}
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://github.com/srid/generics-sop-examples/}{Source code} for
+  this blog post
+\item
+  \href{https://www.youtube.com/watch?v=sQxH349HOik}{This ZuriHac talk}
+  provides a good introduction to generics-sop
+\item
+  \href{https://github.com/kosmikus/SSGEP/blob/master/LectureNotes.pdf}{Applying
+  Type-Level and Generic Programming in Haskell} by Andres Löh acts as a
+  lengthy tutorial cum documentation for generics-sop
+\end{itemize}
