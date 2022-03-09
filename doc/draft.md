@@ -481,10 +481,14 @@ gEncodeRoute = undefined
 To derive route encoding from the constructor name, we need the datatype metadata (provided by `HasDatatypeInfo`) from generics-sop. `constructorInfo . datatypeInfo` gives us the constructor information, from which we will determine the final route encoding using the `hindex` combinator. Effectively, this enables us to produce `"foo.html"` from a sum constructor like `Route_Foo`.
 
 ```haskell
-gEncodeRoute :: forall r. (Generic r, All2 IsRoute (Code r), All IsRouteProd (Code r), HasDatatypeInfo r) => r -> FilePath
+gEncodeRoute :: forall r. 
+  (Generic r, All2 IsRoute (Code r), All IsRouteProd (Code r), HasDatatypeInfo r) => 
+  r -> FilePath
 gEncodeRoute x = gEncodeRoute' @r (from x)
 
-gEncodeRoute' :: forall r. (All2 IsRoute (Code r), All IsRouteProd (Code r), HasDatatypeInfo r) => SOP I (Code r) -> FilePath
+gEncodeRoute' :: forall r. 
+  (All2 IsRoute (Code r), All IsRouteProd (Code r), HasDatatypeInfo r) =>
+  SOP I (Code r) -> FilePath
 gEncodeRoute' (SOP x) =
   -- Determine the contructor name and then strip its prefix.
   let ctorNames :: [ConstructorName] =
@@ -581,7 +585,9 @@ class IsRoute r where
   -- | Decode a route from its encoded filepath
   decodeRoute :: FilePath -> Maybe r
 
-gDecodeRoute :: forall r. (Generic r, All2 IsRoute (Code r), HasDatatypeInfo r) => FilePath -> Maybe r
+gDecodeRoute :: forall r. 
+  (Generic r, All2 IsRoute (Code r), HasDatatypeInfo r) => 
+  FilePath -> Maybe r
 gDecodeRoute fp = undefined
 ```
 
@@ -650,7 +656,9 @@ mcana_NP _ uncons = go sList
 Now we are ready to use a combination of `sList`, `mcana_NS` and `mcana_NP` to implement `gDecodeRoute`:
 
 ```haskell
-gDecodeRoute :: forall r. (Generic r, All IsRouteProd (Code r), All2 IsRoute (Code r), HasDatatypeInfo r) => FilePath -> Maybe r
+gDecodeRoute :: forall r.
+  (Generic r, All IsRouteProd (Code r), All2 IsRoute (Code r), HasDatatypeInfo r) =>
+  FilePath -> Maybe r
 gDecodeRoute fp = do
   -- We operate on first element of the filepath, and inductively decode the rest.
   basePath : restPath <- pure $ splitDirectories fp
@@ -662,7 +670,12 @@ gDecodeRoute fp = do
       (datatypeCtors @r)
   where
     -- The `base` part of the path should correspond to the constructor name. 
-    anamorphismSum :: forall xs xss. IsRouteProd xs => FilePath -> [FilePath] -> NP ConstructorInfo (xs ': xss) -> Either (Maybe (NP I xs)) (NP ConstructorInfo xss)
+    anamorphismSum :: forall xs xss. 
+     IsRouteProd xs => 
+     FilePath -> 
+     [FilePath] ->
+     NP ConstructorInfo (xs ': xss) ->
+     Either (Maybe (NP I xs)) (NP ConstructorInfo xss)
     anamorphismSum base rest (p :* ps) =
       fromMaybe (Right ps) $ do
         let ctorSuffix = ctorStripPrefix @r (constructorName p)
@@ -683,7 +696,9 @@ gDecodeRoute fp = do
                 anamorphismProduct
                 Proxy
       where
-        anamorphismProduct :: forall y1 ys1. (IsRoute y1, SListI ys1) => Proxy (y1 ': ys1) -> Maybe (I y1, Proxy ys1)
+        anamorphismProduct :: forall y1 ys1. 
+         (IsRoute y1, SListI ys1) => 
+         Proxy (y1 ': ys1) -> Maybe (I y1, Proxy ys1)
         anamorphismProduct Proxy = case sList @ys1 of
           -- We "case match" on the rest of the products, to handle the scenario
           -- of there being exactly one product.

@@ -39,6 +39,9 @@
                 haskell-language-server
                 ormolu
                 pkgs.nixpkgs-fmt
+                # For building ./doc
+                pkgs.pandoc
+                pkgs.texlive.combined.scheme-full
               ]);
           };
       in
