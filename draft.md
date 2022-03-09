@@ -1,5 +1,5 @@
 
-# Generics SOP introduction
+# A concise introduction to `generics-sop`
 
 A fascinating aspect of Lisp-based programming languages is that [code is data and data is code](https://en.wikipedia.org/wiki/Code_as_data). This property, called [homoiconicity](https://en.wikipedia.org/wiki/Homoiconicity), is what makes Lisp macros so powerful. This sort of runtime operation done on arbitrary datatypes is called [polytypism](https://en.wikipedia.org/wiki/Polymorphism_(computer_science)#Polytypism) or datatype genericity. In Haskell, the following two packages provide datatype genericity:
 
@@ -8,7 +8,7 @@ A fascinating aspect of Lisp-based programming languages is that [code is data a
 
 While the former comes with `base`, the latter is much easier to write generics code in, and this blog post introduces `generics-sop`.
 
-- [Generics SOP introduction](#generics-sop-introduction)
+- [A concise introduction to `generics-sop`](#a-concise-introduction-to-generics-sop)
   - [Motivation](#motivation)
   - [Basics](#basics)
     - [Datatypes are SOPs under the hood](#datatypes-are-sops-under-the-hood)
@@ -47,22 +47,23 @@ Haskell has two kinds of datatypes:
 1. [Algebraic data types](https://en.wikipedia.org/wiki/Algebraic_data_type), or ADTs
 2. Newtypes
 
-Both ADTs and newtypes are a "sum-of-product" (SOP) under the hood.. When writing generics-sop code, we operate on these SOPs rather than directly on the datatype, because every datatype is "polymorphic" in their SOP representation. The basic idea is that if you can write a function `SOP -> a`, then you get `SomeDataType -> a` for free for *any* `SomeDataType`. This is called [polytypism](https://en.wikipedia.org/wiki/Polymorphism_(computer_science)#Polytypism).
+Both ADTs and newtypes are a "sum-of-product" (SOP) under the hood. When writing generics-sop code, we operate on these SOPs rather than directly on the datatype, because every datatype is "polymorphic" in their SOP representation. The basic idea is that if you can write a function `SOP -> a`, then you get `SomeDataType -> a` for free for *any* `SomeDataType`. This is called [polytypism](https://en.wikipedia.org/wiki/Polymorphism_(computer_science)#Polytypism).
 
 Consider the following ADT (from [the `these` package](https://hackage.haskell.org/package/these-1.1.1.1/docs/Data-These.html)):
 
 ```haskell
+-- `These` is like `Either`, but with a 3rd possibility of representing both values.
 data These a b
   = This a 
   | That b
   | These a b
 ```
 
-Here, `These` is a [**sum** type](https://en.wikipedia.org/wiki/Tagged_union), with `This`, `That` and `These` being its three sum constructors. Each sum constructor themselves are [**product** types](https://en.wikipedia.org/wiki/Product_type) - inasmuch as, say, the `a` and `b` in the 3rd constructor together represent a product type associated with *that* constructor. The type `These` is, under the hood, a "sum of product".
+Here, `These` is a [**sum** type](https://en.wikipedia.org/wiki/Tagged_union), with `This`, `That` and `These` being its three sum constructors. Each sum constructor themselves are [**product** types](https://en.wikipedia.org/wiki/Product_type) - inasmuch as, say, the `a` and `b` in the 3rd constructor together represent a product type associated with *that* constructor. The type `These` is therefore a "sum of product".
 
 ### SOPs are tables
 
-We can visualize the `These` SOP in a table form:
+To gain better intuition, we may visualize the `These` SOP in a table form:
 
 | Constructor | Arg 1 | Arg 2 | ... |
 | ----------- | ----- | ----- | --- |
@@ -70,7 +71,7 @@ We can visualize the `These` SOP in a table form:
 | That        | b     |       |
 | These       | a     | b     |
 
-As every Haskell datatype is a SOP, they can be reduced to a table like the above. Each row represents the sum constructor, and the individual cells to the right represent the arguments to the constructors (product type). We can drop the constructor *names* entirely and simplify the table as:
+As every Haskell datatype is a SOP, they can be (visually) reduced to a table like the above. Each row represents the sum constructor, and the individual cells to the right represent the arguments to the constructors (product type). We can drop the constructor *names* entirely and simplify the table as:
 
 |     |     |
 | --- | --- |
@@ -78,7 +79,9 @@ As every Haskell datatype is a SOP, they can be reduced to a table like the abov
 | b   |     |
 | a   | b   |
 
-Every cell in this table is a unique type. If we define this table in Haskell, we could use type-level lists, specifically a type-level *list of lists*. The outer list represents the sum constructor, and the inner list represents the products. The *kind* of this table type would then be `[[Type]]`. Indeed [this](https://hackage.haskell.org/package/generics-sop-0.5.1.2/docs/Generics-SOP.html#t:Code) is what generics-sop uses. We can define the table type for `These` in Haskell as follows:
+(*`These`* type visually represented as a table)
+
+Every cell in this table is a unique type. To define this table in Haskell we could use type-level lists, specifically a type-level *list of lists*. The outer list represents the sum constructor, and the inner list represents the products. The *kind* of this table type would then be `[[Type]]`. Indeed [this](https://hackage.haskell.org/package/generics-sop-0.5.1.2/docs/Generics-SOP.html#t:Code) is what generics-sop uses. We can define the table type for `These` in Haskell as follows:
 
 ```haskell
 type TheseTable a b =
@@ -230,14 +233,14 @@ The difference is that unlike `Vec` (a homogenous list), `NP` is a heterogenous 
 NP I '[String, Int] :: Type
 ```
 
-Just like `Vec` can enforce the size, this `NP` is a list of exactly size 2 ... however, unlike `Vec` we also say that the first element is of type `String` and the second (and the last) element is of type `Int` (hence a heterogenous list). To create a value of this heterogeneous list:
+Just like `Vec` can enforce the size of its homogenous list, `NP` is a heterogenous list of exactly size 2. However, unlike `Vec` we also say that the first element is of type `String` and the second (and the last) element is of type `Int` (hence a heterogenous list). To create a value of this heterogeneous list:
 
 ```haskell
 > I "Meaning" :* I 42 :* Nil  :: NP I '[String, Int]
 I "Meaning" :* I 42 :* Nil
 ```
 
-That's unsurprising because `Nil` and `(:*)` are the constructors of the `NP` type:
+This syntax should be unsurprising because `Nil` and `(:*)` are the constructors of the `NP` type:
 
 ```haskell
 > :info NP
@@ -255,7 +258,7 @@ The `I` is the identity functor, but it could also be something else like `Maybe
 Nothing :* Just 42 :* Nil
 ```
 
-`NS` is the same, except now we are representing the same characteristics but for the sum type instead of a product type. A sum of length 'n' over some functor 'f':
+`NS` is the same, except now we are representing the same characteristics (heterogeneity) but for the sum type instead of a product type. A sum of length 'n' over some functor 'f':
 
 ```haskell
 > :info NS 
