@@ -1,5 +1,7 @@
-
-# A concise introduction to `generics-sop`
+---
+title: A concise introduction to `generics-sop`
+author: Sridhar Ratnakumar
+---
 
 A fascinating aspect of Lisp-based programming languages is that [code is data and data is code](https://en.wikipedia.org/wiki/Code_as_data). This property, called [homoiconicity](https://en.wikipedia.org/wiki/Homoiconicity), is what makes Lisp macros so powerful. This sort of runtime operation done on arbitrary datatypes is called [polytypism](https://en.wikipedia.org/wiki/Polymorphism_(computer_science)#Polytypism) or datatype genericity. In Haskell, the following two packages provide datatype genericity:
 
@@ -7,30 +9,6 @@ A fascinating aspect of Lisp-based programming languages is that [code is data a
 2. [generics-sop](https://hackage.haskell.org/package/generics-sop)
 
 While the former comes with `base`, the latter is much easier to write generics code in, and this blog post introduces `generics-sop`.
-
-- [A concise introduction to `generics-sop`](#a-concise-introduction-to-generics-sop)
-  - [Motivation](#motivation)
-  - [Basics](#basics)
-    - [Datatypes are SOPs under the hood](#datatypes-are-sops-under-the-hood)
-    - [SOPs are tables](#sops-are-tables)
-    - [Interlude: a foray into type-level programming](#interlude-a-foray-into-type-level-programming)
-  - [Let's play with SOPs](#lets-play-with-sops)
-    - [Interlude: `NS` & `NP`](#interlude-ns--np)
-    - [Code as data; data as code](#code-as-data-data-as-code)
-  - [Example 1: generic equality](#example-1-generic-equality)
-    - [Naive implementation](#naive-implementation)
-    - [Combinator-based implementation](#combinator-based-implementation)
-      - [Interlude: Specialized combinators](#interlude-specialized-combinators)
-  - [Example 2: route encoding](#example-2-route-encoding)
-    - [Manual implementation](#manual-implementation)
-    - [Identify the general pattern](#identify-the-general-pattern)
-    - [Write the generic version](#write-the-generic-version)
-  - [Example 3: route decoding](#example-3-route-decoding)
-    - [`SList`](#slist)
-    - [Anamomrphism combinators](#anamomrphism-combinators)
-    - [Implement `gDecodeRoute`](#implement-gdecoderoute)
-    - [Putting it all together](#putting-it-all-together)
-  - [Further information](#further-information)
 
 ## Motivation
 
