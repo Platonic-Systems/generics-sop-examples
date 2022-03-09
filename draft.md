@@ -20,8 +20,7 @@ While the former comes with `base`, the latter is much easier to write generics 
   - [Example 1: generic equality](#example-1-generic-equality)
     - [Naive implementation](#naive-implementation)
     - [Combinator-based implementation](#combinator-based-implementation)
-  - [Using Combinators](#using-combinators)
-    - [Specialized combinators](#specialized-combinators)
+      - [Interlude: Specialized combinators](#interlude-specialized-combinators)
   - [Example 2: route encoding](#example-2-route-encoding)
     - [Manual implementation](#manual-implementation)
     - [Identify the general pattern](#identify-the-general-pattern)
@@ -413,16 +412,15 @@ This code introduces two more aspects to `generics-sop`:
 
 This is just a brief taste of generics-sop combinators. Read [ATLGP] for details, and we shall introduce more in the examples below.
 
-## Using Combinators
+#### Interlude: Specialized combinators
 
-### Specialized combinators
-Most combinators are polymorphic over the containing structure. You might want to begin with their monomorphized versions for gentle learning curve. or example, `hcollapse` has the follwing signature that makes it possible to work with a `NS` or a `NP`, etc.
+Most combinators are polymorphic over the containing structure, and as such their type signatures can be pretty complex to understand. For this reason, you might want to begin with using their *monomorphized* versions which have simpler type signatures. For example, the polymorphic combinator `hcollapse` has the follwing signature that makes it possible to work with any structure (`NS` or a `NP`, etc).
 
 ```haskell
 hcollapse :: SListIN h xs => h (K a) xs -> CollapseTo h a
 ```
 
-This signature is not particularly easier to understand if you are not very familiar with the library. But the monommorphisized version, such as that for `NS`, is more straightforward to comprehend:
+This signature is not particularly easier to understand if you are not very familiar with the library. But the monomorphized versions, such as that for `NS`, are more straightforward to understand:
 
 ```haskell
 collapse_NP :: NP (K a) xs -> [a]
@@ -432,29 +430,25 @@ These specialized versions typically are suffixed as above (ie., `_NP`).
 
 ## Example 2: route encoding
 
-Although the generic equality example above did demonstrate how to use generics-sop to generically implement `eq`, it is not particular very interesting. To that end, we will demonstrate how to represent routes in a statically generated site using algebraic data types as well as deriving encoders (`route -> FilePath`) for them automatically using generics-sop. 
+In the first example above we demonstrated how to use generics-sop to generically implement `eq`. Here, we will demonstrate a more interesting example. Specifically, how to represent routes for a statically generated site using algebraic data types. We will derive encoders (`route -> FilePath`) for them automatically using generics-sop. 
 
-Imagine you are writing a static site in Haskell[^gen] for your blog posts. You could represent the different routes (corresponding to generated `.html` files) using the following types:
+Imagine you are writing a static site in Haskell[^gen] for your blog posts. Each "route" in that site corresponds to a generated `.html` file. We will use ADTs to represent the routes:
 
 [^gen]: Using generators like [Hakyll](https://jaspervdj.be/hakyll/) or [Ema](https://ema.srid.ca/)
 
 ```haskell
 data Route
-  = Route_Index
-  | Route_Blog BlogRoute
-  deriving stock (GHC.Generic)
-  deriving anyclass (Generic)
+  = Route_Index -- index.html
+  | Route_Blog BlogRoute -- blog/*
 
 data BlogRoute
-  = BlogRoute_Index
-  | BlogRoute_Post PostSlug
-  deriving stock (GHC.Generic)
-  deriving anyclass (Generic)
+  = BlogRoute_Index -- blog/index.html
+  | BlogRoute_Post PostSlug -- blog/${slug}.html
 
 newtype PostSlug = PostSlug {unPostSlug :: Text}
 ```
 
-Now we want to create a function `encodeRoute :: r -> FilePath` that will produce the `.html` filepath to generate when writing the HTML page for that route `r`. Let's define a typeclass for it:
+To compute the path to the `.html` file for each route, we need a function `encodeRoute :: r -> FilePath`. It is worth creating a typeclass for it, because they we can recursively encode the ADT:
 
 ```haskell
 -- Class of routes that can be encoded to a filename.
@@ -464,14 +458,14 @@ class IsRoute r where
 
 ### Manual implementation
 
-Before writing generic implementation, it is always useful to write the implementation "by hand". This will allow us to begin to build an intution for what the generic version will look like.
+Before writing generic implementation, it is always useful to write the implementation "by hand". This enables us to begin to build an intution for what the generic version will look like.
 
 ```haskell
 -- This instance will remain manual.
 instance IsRoute PostSlug where
   encodeRoute (PostSlug slug) = T.unpack slug <> ".html"
 
--- These instances will be generalized.
+-- These instances eventually will be generalized.
 instance IsRoute BlogRoute where
   encodeRoute = \case
     BlogRoute_Index -> "index.html"
@@ -483,26 +477,26 @@ instance IsRoute Route where
     Route_Blog br -> "blog" </> encodeRoute br
 ```
 
-There is nothing we can do about `PostSlug` instance, because it is not an ADT, but we *do* want to implement `encodeRoute` for both `BlogRoute` and `Route` generically. 
+There is nothing we can do about `PostSlug` instance, because it is not an ADT, but we *do* want to generically implement `encodeRoute` for both `BlogRoute` and `Route` generically. 
 
 ### Identify the general pattern
 
-After having written the implementation manually, the next step is to make it as general as possible. Try to extract the "general pattern" behind these specialized-seeming implementation. Looking at the implementation above, we can conclude the general pattern as follows:
+After having written the implementation manually, the next step is to make it as general as possible. Try to extract the "general pattern" behind these manual implementations. Looking at the instances above, we can conclude the general pattern as follows:
 
-- To encode `Foo_Bar` in a datetype `Foo`, we drop the `Foo_`, and take the `Bar`. Then we convert it to `bar.html`.
+- To encode `Foo_Bar` in a datatype `Foo`, we drop the `Foo_`, and take the `Bar`. Then we convert it to `bar.html`.
 - If a sum constructor has arguments, we check that it has exactly one argument (arity <=1). Then call `encodeRoute` on that argument, and append it to the constructor's encoding using `/`. 
-  - For example, to encode `BlogPost_Post (PostSlug "hello")` we first encode the constructor as `"post"`, then encode the only argument as `encodeRoute (PostSlug "hello")` which reduces to `"hello.html"`, thus producing the encoding `"post/hello.html"`. Finally when encoding `Route_Blog br` - this gets encoded ito `"blog/post/hello.html"`, recursively.
+  - For example, to encode `BlogPost_Post (PostSlug "hello")` we first encode the constructor as `"post"`, then encode the only argument as `encodeRoute (PostSlug "hello")` which reduces to `"hello.html"`, thus producing the encoding `"post/hello.html"`. Finally when encoding `Route_Blog br` - this gets encoded ito `"blog/post/hello.html"`, inductively.
 
 ### Write the generic version
 
-Having identified the general pattern, we are now in a position to write a generic version of `encodeRoute`:
+Having identified the general pattern, we are now in a position to write the generic version of `encodeRoute`.  Keep in mind the above pattern while you follow the code below.
 
 ```haskell
 gEncodeRoute :: Generic r => r -> FilePath
 gEncodeRoute = undefined
 ```
 
-To derive route encoding from the constructor name, we need the datatype metadata provided by `HasDatatypeInfo` from generics-sop. `constructorInfo . datatypeInfo` provides the constructor information, from which we will determine the final route encoding (ie., `Route_Foo` -> `"foo.html"`) via indexing using `hindex`.
+To derive route encoding from the constructor name, we need the datatype metadata (provided by `HasDatatypeInfo`) from generics-sop. `constructorInfo . datatypeInfo` gives us the constructor information, from which we will determine the final route encoding using the `hindex` combinator. Effectively, this enables us to produce `"foo.html"` from a sum constructor like `Route_Foo`.
 
 ```haskell
 gEncodeRoute :: forall r. (Generic r, All2 IsRoute (Code r), All IsRouteProd (Code r), HasDatatypeInfo r) => r -> FilePath
