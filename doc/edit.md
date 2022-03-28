@@ -3,20 +3,20 @@ title: A concise introduction to `generics-sop`
 author: Sridhar Ratnakumar
 ---
 
-A fascinating aspect of Lisp-based programming languages is that [code is data and data is code](https://en.wikipedia.org/wiki/Code_as_data). This property, called [homoiconicity](https://en.wikipedia.org/wiki/Homoiconicity), is what makes Lisp macros so powerful. This sort of runtime operation done on arbitrary datatypes is called [polytypism](https://en.wikipedia.org/wiki/Polymorphism_(computer_science)#Polytypism) or datatype genericity. In Haskell, the following two packages provide datatype genericity:
+A fascinating aspect of Lisp-based programming languages is that [code is data and data is code](https://en.wikipedia.org/wiki/Code_as_data). This property, called [homoiconicity](https://en.wikipedia.org/wiki/Homoiconicity), is what makes Lisp macros so powerful. This sort of runtime operation done on arbitrary datatypes is called [polytypism](https://en.wikipedia.org/wiki/Polymorphism_(computer_science)#Polytypism), or datatype genericity. In Haskell, the following two packages provide datatype genericity:
 
 1. [GHC Generics](https://hackage.haskell.org/package/base-4.16.0.0/docs/GHC-Generics.html)
 2. [generics-sop](https://hackage.haskell.org/package/generics-sop)
 
-While the former comes with `base`, the latter is much easier to write generics code in, and this blog post introduces `generics-sop`.
+While the former comes with `base`, the latter is much easier to write generics code in. This article introduces `generics-sop`.
 
 ## Motivation
 
-Generic programming is useful in avoiding writing of boilerplate implementations for each datatype that are otherwise similar in some way. This could be a ([polytypic](https://www.sciencedirect.com/science/article/pii/S0167642304000152)) function or a typeclass instance. For example, instead of having to manually write `FromJSON` and `ToJSON` instances for each of your datatypes, you can use generics to derive them automatically. Other examples include pretty printers, parsers, equality functions and route encoders.
+Generic programming allows one to avoid writing boilerplate implementations for each similar datatype. The implementation could be a ([polytypic](https://www.sciencedirect.com/science/article/pii/S0167642304000152)) function or a typeclass instance. For example, instead of having to manually write `FromJSON` and `ToJSON` instances for each of your datatypes, you can use generics to derive them automatically. Other examples of generics include pretty printers, parsers, equality functions and route encoders.
 
 ## Basics
 
-Before diving, we must understand the "SOP" in generics-**sop**.
+Before diving further into this topic, we must understand the "SOP" in generics-**sop**.
 
 ### Datatypes are SOPs under the hood
 
@@ -37,7 +37,7 @@ data These a b
   | These a b
 ```
 
-Here, `These` is a [**sum** type](https://en.wikipedia.org/wiki/Tagged_union), with `This`, `That` and `These` being its three sum constructors. Each sum constructor themselves are [**product** types](https://en.wikipedia.org/wiki/Product_type) - inasmuch as, say, the `a` and `b` in the 3rd constructor together represent a product type associated with *that* constructor. The type `These` is therefore a "sum of product".
+Here, `These` is a [**sum** type](https://en.wikipedia.org/wiki/Tagged_union), with `This`, `That` and `These` being its three sum constructors. Each sum constructor itself is a [**product** type](https://en.wikipedia.org/wiki/Product_type) - inasmuch as, say, the `a` and `b` in the third constructor together represent a product type associated with *that* constructor. The type `These` is therefore a "sum of product".
 
 ### SOPs are tables
 
@@ -49,7 +49,7 @@ To gain better intuition, we may visualize the `These` SOP in a table form:
 | That        | b     |       |
 | These       | a     | b     |
 
-As every Haskell datatype is a SOP, they can be (visually) reduced to a table like the above. Each row represents the sum constructor, and the individual cells to the right represent the arguments to the constructors (product type). We can drop the constructor *names* entirely and simplify the table as:
+As every Haskell datatype is a SOP, they can be (visually) reduced to a table like the one above. Each row represents the sum constructor; the individual cells to the right represent the arguments to the constructors (product type). We can drop the constructor *names* entirely and simplify the table as:
 
 |     |     |
 | --- | --- |
@@ -59,7 +59,7 @@ As every Haskell datatype is a SOP, they can be (visually) reduced to a table li
 
 (*`These`* type visually represented as a table)
 
-Every cell in this table is a unique type. To define this table in Haskell we could use type-level lists, specifically a type-level *list of lists*. The outer list represents the sum constructor, and the inner list represents the products. The *kind* of this table type would then be `[[Type]]`. Indeed [this](https://hackage.haskell.org/package/generics-sop-0.5.1.2/docs/Generics-SOP.html#t:Code) is what generics-sop uses. We can define the table type for `These` in Haskell as follows:
+Every cell in this table is a unique type. To define this table in Haskell, we could use type-level lists; specifically, a type-level *list of lists*. The outer list represents the sum constructor, while the inner list represents the products. This table type *kind* would then be `[[Type]]`. Indeed, [this](https://hackage.haskell.org/package/generics-sop-0.5.1.2/docs/Generics-SOP.html#t:Code) is what generics-sop uses. We can define the table type for `These` in Haskell as follows:
 
 ```haskell
 type TheseTable a b =
@@ -69,11 +69,11 @@ type TheseTable a b =
   ]
 ```
 
-If you are confused about this syntax, read the following "Interlude" section.
+If this syntax seems confusing, see the following "Interlude" section.
 
 ### Interlude: a foray into type-level programming
 
-What is a "kind"? Kinds are to types what types are to terms. For example, the *type of* of the term `"Hello world"` is `String`. The latter is a "type," whereas the former is a "term". Furthermore we can go one level up and ask - what the *kind of* of the type `String` is; and the answer is `Type`. We can clarify this further by explicitly annotating the kinds of types when defining them (just as we annotate the types of terms when defining them):
+What is a "kind"? Kinds are to types what types are to terms. For example, the *type of* of the term `"Hello world"` is `String`. The latter is a "type," whereas the former is a "term". Furthermore, we can go one level up and ask what the *kind of* of the type `String` is. The answer is `Type`. We can clarify this further by explicitly annotating the kinds of types when defining them (just as we annotate the types of terms when defining them):
 
 ```haskell
 -- Here, we define a term (2nd line) and declare its type (1st line)
@@ -92,7 +92,7 @@ type Maybe :: Type -> Type
 data Maybe a = Nothing | Just a
 ```
 
-Here we say that "the type `Maybe` is of kind `Type -> Type`". In other words, `Maybe` is a *type-level function* that takes a type of kind `Type` as an argument and returns another type of the same kind `Type` as its result. 
+Here, we say that "the type `Maybe` is of kind `Type -> Type`". In other words, `Maybe` is a *type-level function* that takes a type of kind `Type` as an argument and returns another type of the same kind `Type` as its result. 
 
 Finally, we are now in a position to understand the kind of `TheseTable` described in the prior section:
 
@@ -105,13 +105,13 @@ type TheseTable a b =
   ]
 ```
 
-`[Type]` is the kind of type-level lists, and `[[Type]]` is the kind of type-level lists of lists. The tick (`'`) lifts a term into a type. So, while `True` represents a *term* of type `Bool`, `'True` on the other hand represents a *type* of *kind* `Bool`, just as `'[a]` represents a type of the kind `[Type]`. The tick "promotes" a term to be a type. See [Datatype promotion](https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/data_kinds.html#) in GHC user guide for details.
+`[Type]` is the kind of type-level lists, and `[[Type]]` is the kind of type-level lists of lists. The tick (`'`) lifts a term into a type. So, while `True` represents a *term* of type `Bool`, `'True`, on the other hand, represents a *type* of *kind* `Bool` - just as `'[a]` represents a type of the kind `[Type]`. See [Datatype promotion](https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/data_kinds.html#) in GHC user guide for details.
 
-See [An introduction to typeclass metaprogramming](https://lexi-lambda.github.io/blog/2021/03/25/an-introduction-to-typeclass-metaprogramming/) as well as [Thinking with Types](https://thinkingwithtypes.com/) for more on type-level programming.
+See [An introduction to typeclass metaprogramming](https://lexi-lambda.github.io/blog/2021/03/25/an-introduction-to-typeclass-metaprogramming/), as well as [Thinking with Types](https://thinkingwithtypes.com/) for more on type-level programming.
 
 ## Let's play with SOPs
 
-Enough theory, let's get our hands dirty in GHCi. If you use Nix, you can clone [this repo](https://github.com/srid/generics-sop-examples) and run `bin/repl` to get GHCi with everything configured ahead for you.
+Enough theory; let's get our hands dirty in GHCi. If you use Nix, you can clone [this repo](https://github.com/srid/generics-sop-examples) and run `bin/repl` to get GHCi with everything configured ahead for you.
 
 ```sh-session
 $ git clone https://github.com/srid/generics-sop-examples.git 
@@ -128,7 +128,7 @@ The project already has `generics-sop` and `sop-core` added to the .cabal file, 
 > import Generics.SOP
 ```
 
-We also have [the `these` package](https://hackage.haskell.org/package/these-1.1.1.1/docs/Data-These.html) added to the .cabal file because it provides the above `These` type from `Data.These` module. To explore the SOP representation of the `These` type, let us do some bootstrapping:
+We also have [the `these` package](https://hackage.haskell.org/package/these-1.1.1.1/docs/Data-These.html) added to the .cabal file, because it provides the above `These` type from `Data.These` module. To explore the SOP representation of the `These` type, let's do some bootstrapping:
 
 ```haskell
 > import Data.These 
@@ -136,14 +136,14 @@ We also have [the `these` package](https://hackage.haskell.org/package/these-1.1
 > let breakfast = These "Egg" "Sausage" :: These String String
 ```
 
-We derived `Generic` on the type and created a term value called `breakfast` (we are eating both eggs and sausages). To get the SOP representation of this value, we can use [`from`](https://hackage.haskell.org/package/generics-sop-0.5.1.2/docs/Generics-SOP.html#v:from):
+We derived `Generic` on the type and created a term value called `breakfast` (for which we are eating both eggs and sausage). To get the SOP representation of this value, we can use [`from`](https://hackage.haskell.org/package/generics-sop-0.5.1.2/docs/Generics-SOP.html#v:from):
 
 ```haskell
 > unSOP . from $ breakfast
 S (S (Z (I "Egg" :* I "Sausage" :* Nil)))
 ```
 
-Well explain the above value structure in a bit, but the key thing to realize is that this value corresponds to the 3rd row in the SOP table for `These`:
+The key takeaway here is that the breakfast value corresponds to the third row in the SOP table for `These`
 
 |        |        |
 | ------ | ------ |
@@ -151,7 +151,7 @@ Well explain the above value structure in a bit, but the key thing to realize is
 | String |        |
 | String | String |
 
-Because `breakfast` is a value of the 3rd constructor of `These` and it contains two values (the product of "Egg" and "Sausage"). The corresponding Haskell type for this table:
+because `breakfast` is a value of the third constructor of `These`, and it contains two values (the product of "Egg" and "Sausage"). The corresponding Haskell type for this table appears as follows:
 
 ```haskell
 type TheseTable :: [[Type]]
@@ -162,14 +162,14 @@ type TheseTable =
   ]
 ```
 
-This type is automatically provided by `generics-sop` whenever we derive a `Generic` instance for the type in question. We did precisely that further above by evaluating `instance Generic (These a b)` in GHCi. Instead of manually defining `TheseTable` as above, deriving `Generic` gives it for free, in the form of `Code a` (viz. `Code (These a b)`).
+This type is automatically provided by `generics-sop` whenever we derive a `Generic` instance for the type in question. We did precisely that further above by evaluating `instance Generic (These a b)` in GHCi. Instead of manually defining `TheseTable` as above, deriving `Generic` does it for free, in the form of `Code a` (viz. `Code (These a b)`).
 
 ```haskell
 > :k Code (These String String)
 Code (These String String) :: [[Type]]
 ```
 
-In brief, remember this: `Code a` gives us the SOP table *type* for the datatype `a`. Now how do we get the SOP table *value*? That is what `from` is for:
+In brief, remember this: `Code a` gives us the SOP table *type* for the datatype `a`. Now, how do we get the SOP table *value*? That's what `from` is for:
 
 ```haskell
 > :t (unSOP . from $ breakfast)
@@ -189,7 +189,7 @@ In brief, remember this: `Code a` gives us the SOP table *type* for the datatype
                 ('[] @[Type]))))
 ```
 
-That is quite a mouthful because type-level lists are not represented cleanly in GHCi. But we can reduce it (in our mind) to the following
+Sadly, type-level lists are not represented cleanly in GHCi. But we can reduce it (in our minds) to the following:
 
 ```haskell
 > :t (unSOP . from $ breakfast)
@@ -197,11 +197,11 @@ That is quite a mouthful because type-level lists are not represented cleanly in
   :: NS (NP I) '[ [String], [String], [String, String] ]
 ```
 
-Notice how this is more or less isomorphic to our `TheseTable` definition above. We will explain the `NS` and `NP` parts next.
+Notice how this construction is more or less isomorphic to our `TheseTable` definition above. Next, I will explain the `NS` and `NP` parts.
 
 ### Interlude: `NS` & `NP`
 
-You wonder what the `NS (NP I)` part refers to in our table type above. `NS` is a n-ary sum; and `NP` an n-ary product. These are explained well in section 2 of [Applying Type-Level and Generic Programming in Haskell][ATLGP], but for our purposes - you can treat `NS` as similar to the `Nat` type from the [fin package](https://hackage.haskell.org/package/fin-0.2.1/docs/Data-Nat.html), and `NP` as being similar to the `Vec` type from the [vec package](https://hackage.haskell.org/package/vec-0.4.1/docs/Data-Vec-Lazy.html#t:Vec).
+You might wonder what the `NS (NP I)` part refers to in our table type above. `NS` is a n-ary sum and `NP` an n-ary product. These are explained well in section 2 of [Applying Type-Level and Generic Programming in Haskell][ATLGP]. However, for our purposes, you can treat `NS` as similar to the `Nat` type from the [fin package](https://hackage.haskell.org/package/fin-0.2.1/docs/Data-Nat.html), and `NP` as similar to the `Vec` type from the [vec package](https://hackage.haskell.org/package/vec-0.4.1/docs/Data-Vec-Lazy.html#t:Vec).
 
 [ATLGP]: https://github.com/kosmikus/SSGEP/blob/master/LectureNotes.pdf
 The difference is that unlike `Vec` (a homogenous list), `NP` is a heterogenous list whose element types are specified by a type-level list.
@@ -211,14 +211,14 @@ The difference is that unlike `Vec` (a homogenous list), `NP` is a heterogenous 
 NP I '[String, Int] :: Type
 ```
 
-Just like `Vec` can enforce the size of its homogenous list, `NP` is a heterogenous list of exactly size 2. However, unlike `Vec` we also say that the first element is of type `String` and the second (and the last) element is of type `Int` (hence a heterogenous list). To create a value of this heterogeneous list:
+Just like `Vec`, can enforce the size of its homogenous list. `NP` is a heterogenous list of exactly size 2. However, unlike `Vec`, we also say that the first element is of type `String` and the second (and the last) element is of type `Int` (hence, a heterogenous list). To create a value of this heterogeneous list:
 
 ```haskell
 > I "Meaning" :* I 42 :* Nil  :: NP I '[String, Int]
 I "Meaning" :* I 42 :* Nil
 ```
 
-This syntax should be unsurprising because `Nil` and `(:*)` are the constructors of the `NP` type:
+This syntax should be unsurprising because `Nil` and `(:*)` are constructors of the `NP` type:
 
 ```haskell
 > :info NP
@@ -229,14 +229,14 @@ data NP :: (k -> Type) -> [k] -> Type where
 
 ([View haddocks](https://hackage.haskell.org/package/sop-core-0.5.0.2/docs/Data-SOP.html#t:NP))
 
-The `I` is the identity functor, but it could also be something else like `Maybe`:
+The `I` is the identity functor, but it could also be something else, like `Maybe`:
 
 ```haskell
 > Nothing :* Just 42 :* Nil  :: NP Maybe '[String, Int]
 Nothing :* Just 42 :* Nil
 ```
 
-`NS` is the same, except now we are representing the same characteristics (heterogeneity) but for the sum type instead of a product type. A sum of length 'n' over some functor 'f':
+`NS` is the same, except now we are representing the same characteristics (heterogeneity) for the sum type instead of a product type. A sum of length 'n' over some functor 'f':
 
 ```haskell
 > :info NS 
@@ -247,7 +247,7 @@ data NS :: (k -> Type) -> [k] -> Type where
 
 ([View haddocks](https://hackage.haskell.org/package/sop-core-0.5.0.2/docs/Data-SOP.html#t:NS))
 
-When the value is `Z` it indicates the first sum constructor; when it is `S . Z` it is the second, and so on. Our `breakfast` value above uses `These`, which is the 3rd constructor. So, to construct the SOP representation of this value directly, we would use `S . S . Z`. This is exactly what we saw above (repeated here):
+When the value is `Z`, it indicates the first sum constructor. When the value is `S . Z`, it indicates the second constructor, and so on. Our `breakfast` value above uses `These`, which is the third constructor. So, to construct the SOP representation of this value directly, we would use `S . S . Z`. This is exactly what we saw above (repeated here):
 
 ```haskell
 -- Note the `S . S . Z`
@@ -259,11 +259,11 @@ S (S (Z (I "Egg" :* I "Sausage" :* Nil)))
   :: NS (NP I) '[ [String], [String], [String, String] ]
 ```
 
-`NS`'s functor is a `NP I`, and so the inner value of that sum choice is an n-ary product (remember: we are working with a sum-of-product), whose value is `I "Egg" :* I "Sausage" :* Nil`. Putting that product inside a sum, we get `S (S (Z (I "Egg" :* I "Sausage" :* Nil)))`.
+`NS`'s functor is a `NP I`, so the sum choice's inner value is an n-ary product (remember: we are working with a sum-of-product), whose value is `I "Egg" :* I "Sausage" :* Nil`. Putting that product inside a sum, we get `S (S (Z (I "Egg" :* I "Sausage" :* Nil)))`.
 
 ### Code as data; data as code
 
-Ther SOP representation of `These` can be manually constructed. First we build the constructor arguments (product), and then we build the constructor itself (sum):
+The SOP representation of `These` can be manually constructed. First, we build the constructor arguments (product), followed by the constructor itself (sum):
 
 ```haskell
 > let prod = I "Egg" :* I "Sausage" :* Nil :: NP I '[String, String]
@@ -272,28 +272,28 @@ Ther SOP representation of `These` can be manually constructed. First we build t
 sum :: NS (NP I) '[[String], [String], [String, String]]
 ```
 
-And from this representation, we can produce a value of type `These` easily, using [`to`](https://hackage.haskell.org/package/generics-sop-0.5.1.2/docs/Generics-SOP.html#v:to):
+From this representation, we can easily produce a value of type `These` using [`to`](https://hackage.haskell.org/package/generics-sop-0.5.1.2/docs/Generics-SOP.html#v:to):
 
 ```haskell
 > to @(These String String) (SOP sum)
 These "Egg" "Sausage"
 ```
 
-Let us stop for a moment and reflect on what we just did. By treating the type-definition of `These` ("code") as a generic `SOP` table ("data") -- i.e., code as data -- we are able to generate a value ("code") for that type ("data") -- ie., data as code -- but without using the constructors of that type. This is generic programming in Haskell; you program *generically*, without being privy to the actual type used. 
+Let's stop for a moment and reflect on this action. By treating the type-definition of `These` ("code") as a generic `SOP` table ("data")--i.e., code as data--we are able to generate a value ("code") for that type ("data")--ie., data as code--but without using the constructors of that type. This is generic programming in Haskell; you program *generically* without being privy to the actual type used. 
 
-This concludes the section on playing with SOPs. Now let us do something useful.
+This concludes our playing with SOPs. Now let's do something useful.
 
 ## Example 1: generic equality
 
-GHC's [stock deriving](https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/deriving_strategies.html#deriving-strategies) can be used to derive instances for builtin type classes, like `Eq`, on user-defined datatypes. This works for builtin type classes, but generics-sop (as well as GHC.Generics) comes in handy when you want to derive generically for arbitrary typeclasses. For a moment, let us assume that GHC had no support for stock deriving; how will we derive our `Eq` instance?
+GHC's [stock deriving](https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/deriving_strategies.html#deriving-strategies) can be used to derive instances for builtin type classes, like `Eq`, on user-defined datatypes. This works for builtin type classes, but generics-sop (as well as GHC.Generics) comes in handy when you want to derive generically for arbitrary typeclasses. For a moment, let's assume that GHC had no support for stock deriving. How, then, would we derive our `Eq` instance?
 
-We want a function `geq` that takes *any* datatype `a` (this makes the function [polytypic](https://www.sciencedirect.com/science/article/pii/S0167642304000152)), and does equality check on its arguments. In effect, we want:
+We want a function `geq` that takes *any* datatype `a` (making the function [polytypic](https://www.sciencedirect.com/science/article/pii/S0167642304000152)) and performs an equality check on its arguments. In effect, we want:
 
 ```haskell
 geq :: Generic a => a -> a -> Bool
 ```
 
-This function can be further broken down to operate on SOP structures directly, so as to "forget" the specific `a`:
+This function can be broken down further to operate on SOP structures directly, so as to "forget" the specific `a`:
 
 ```haskell
 geq :: forall a. Generic a => a -> a -> Bool
@@ -305,11 +305,11 @@ geq' = undefined
 
 Our problem has now been reduced to operating on SOP tables, and our task is to implement `geq'`.
 
-At this point you are probably thinking we can just case-match on the arguments, but remember that the n-ary sum type `NS` is a [GADT](https://downloads.haskell.org/~ghc/latest/docs/html/users_guide/exts/gadt.html#gadt) (its type index is [dependent](https://en.wikipedia.org/wiki/Dependent_type) on the sum constructor). We have to instead case-match at the *type-level* as it were. This is what type-classes are for. The general pattern is that when wanting a  `foo` that case-match'es at type-level, we write a type-class `Foo` and write instances for each case-match pattern. 
+At this point, you are probably thinking we can simply case-match on the arguments. But remember that the n-ary sum type `NS` is a [GADT](https://downloads.haskell.org/~ghc/latest/docs/html/users_guide/exts/gadt.html#gadt) (i.e., its type index is [dependent](https://en.wikipedia.org/wiki/Dependent_type) on the sum constructor). Instead, we have to case-match at the *type-level*, as it were. This is what type-classes are for. When wanting a `foo` that case-matches at type-level, The general pattern calls for writing a type-class `Foo` and then writing instances for each case-match pattern. 
 
 ### Naive implementation
 
-For pedagogic reasons, we begin with a naive implementation of `geq'` to illustrate the above. We need a `sumEq` function that checks equality of first constructor and then recurses for others; it will case-match on the outer list. Likewise, for each sum constructor, we will need a `prodEq` that checks equality of its products; and it does so, similarly, by checking equality of the first product and then recurses for the rest; it will case-match on the inner list.
+For pedagogic reasons, we begin with a naive implementation of `geq'` to illustrate the above solution. We need a `sumEq` function that checks the equality of the first constructor and then recurses it for others. The function will case-match on the outer list. Likewise, for each sum constructor, we will need a `prodEq` that checks the equality of its products. It does so, similarly, by checking the equality of the first product and then recursing for the rest; `prodEq` will case-match on the inner list.
 
 ```haskell
 geq' :: SumEq (Code a) => NS (NP I) (Code a) -> NS (NP I) (Code a) -> Bool
@@ -342,7 +342,7 @@ instance (Eq x, ProdEq xs) => ProdEq (x ': xs) where
   prodEq (x :* xs) (y :* ys) = x == y && prodEq xs ys
 ```
  
-Notice how in the first instance for `SumEq` we are "pattern matching" as it were at the type-level and defining the implementation for the scenario of zero sum constructors (not inhabitable). Then, inductively, we define the next instance using recursion. When both arguments are at `Z`, we match their products, using `prodEq` which is defined similarly. Otherwise, we recurse into the successor constructor (the `x` in `S x`). The story for `ProdEq` is similar.
+Notice how, in the first instance for `SumEq`, we are "pattern matching", as it were, at the type-level and defining the implementation for the scenario of zero sum constructors (not inhabitable). Then, inductively, we define the next instance using recursion. When both arguments are at `Z`, we match their products, using `prodEq`, which is defined similarly. Otherwise, we recurse into the successor constructor (the `x` in `S x`). The story for `ProdEq` is similar.
 
 Finally, we can test that it works:
 
@@ -353,11 +353,11 @@ False
 True
 ```
 
-We just implemented an equality function that works for *any* datatype (with `Generic` instance).
+Thus, we have implemented an equality function that works for *any* datatype (with `Generic` instance).
 
 ### Combinator-based implementation
 
-Hopefully, the above naive implementation is illustratory of how one can "transform" SOP structures straightforwardly using typeclasses. N-ary sums and products need to be processed at type-level, so it is not uncommon to write new type-classes to dispatch on their constructors, as shown above. Typically, however, you do not have to do that because `generics-sop` provides combinators for common operations. Here, we will rewrite the above implementation using these combinators.
+Hopefully, the above naive implementation illustrates how one can "transform" SOP structures straightforwardly using typeclasses. N-ary sums and products need to be processed at type-level, so it is not uncommon to write new type-classes to dispatch on their constructors, as shown above. Typically, however, you do not have to do that because `generics-sop` provides combinators for common operations. Here, we will rewrite the above implementation using these combinators.
 
 The combinators are explained in depth in [ATLGP]. We will introduce a few in this post. The particular combinators we need for `geq` are:
 
