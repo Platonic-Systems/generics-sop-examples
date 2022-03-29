@@ -3,12 +3,12 @@ title: A concise introduction to `generics-sop`
 author: Sridhar Ratnakumar
 ---
 
-A fascinating aspect of Lisp-based programming languages is that [code is data and data is code](https://en.wikipedia.org/wiki/Code_as_data). This property, called [homoiconicity](https://en.wikipedia.org/wiki/Homoiconicity), is what makes Lisp macros so powerful. This sort of runtime operation done on arbitrary datatypes is called [polytypism](https://en.wikipedia.org/wiki/Polymorphism_(computer_science)#Polytypism), or datatype genericity. In Haskell, the following two packages provide datatype genericity:
+A fascinating aspect of Lisp-based programming languages is that [code is data and data is code](https://en.wikipedia.org/wiki/Code_as_data). This property, called [homoiconicity](https://en.wikipedia.org/wiki/Homoiconicity), is what makes Lisp macros so powerful. This sort of runtime operation performed on arbitrary datatypes is called [polytypism](https://en.wikipedia.org/wiki/Polymorphism_(computer_science)#Polytypism), or datatype genericity. In Haskell, the following two packages provide datatype genericity:
 
 1. [GHC Generics](https://hackage.haskell.org/package/base-4.16.0.0/docs/GHC-Generics.html)
 2. [generics-sop](https://hackage.haskell.org/package/generics-sop)
 
-While the former comes with `base`, the latter is much easier to write generics code in. This article introduces `generics-sop`.
+While the former comes with `base`, the latter is much more amenable to writing generics code. This article introduces `generics-sop`.
 
 ## Motivation
 
@@ -143,7 +143,7 @@ We derived `Generic` on the type and created a term value called `breakfast` (fo
 S (S (Z (I "Egg" :* I "Sausage" :* Nil)))
 ```
 
-The key takeaway here is that the breakfast value corresponds to the third row in the SOP table for `These`
+The key takeaway here is that the breakfast value corresponds to the third row in the SOP table for `These`, because `breakfast` is a value of the third constructor and it contains two values (the product of "Egg" and "Sausage").
 
 |        |        |
 | ------ | ------ |
@@ -151,7 +151,7 @@ The key takeaway here is that the breakfast value corresponds to the third row i
 | String |        |
 | String | String |
 
-because `breakfast` is a value of the third constructor of `These`, and it contains two values (the product of "Egg" and "Sausage"). The corresponding Haskell type for this table appears as follows:
+The corresponding Haskell type for this table appears as follows:
 
 ```haskell
 type TheseTable :: [[Type]]
@@ -359,7 +359,7 @@ Thus, we have implemented an equality function that works for *any* datatype (wi
 
 Hopefully, the above naive implementation illustrates how one can "transform" SOP structures straightforwardly using typeclasses. N-ary sums and products need to be processed at type-level, so it is not uncommon to write new type-classes to dispatch on their constructors, as shown above. Typically, however, you do not have to do that because `generics-sop` provides combinators for common operations. Here, we will rewrite the above implementation using these combinators.
 
-The combinators are explained in depth in [ATLGP]. We will introduce a few in this post. The particular combinators we need for `geq` are:
+The combinators are explained in depth in [ATLGP]. We will introduce a few in this article. The particular combinators we need for `geq` are:
 
 | Combinator    | Description                                          | Typeclass it replaces |
 | ------------- | ---------------------------------------------------- | --------------------- |
@@ -367,7 +367,7 @@ The combinators are explained in depth in [ATLGP]. We will introduce a few in th
 | `hcollapse`   | Convert heterogenous structure into homogenous value | `ProdEq`              |
 | `ccompare_NS` | Compare two `NS` values                              | `SumEq`               |
 
-To appreciate the value of these particular combinators, notice the 3rd column indicating the type-class it intends to replace. Withtout further ado, here is the new (compact) implementation:
+To appreciate the value of these particular combinators, notice the third column indicating the type-class it intends to replace. Withtout further ado, here is the new (compact) implementation:
 
 ```haskell
 geq :: forall a. (Generic a, All2 Eq (Code a)) => a -> a -> Bool
@@ -389,30 +389,30 @@ geq' (SOP c1) (SOP c2) =
 
 This code introduces two more aspects to `generics-sop`:
 
-- **Constraint propagation**: When generically transforming SOP structures we want to be able to "propagate" inner constraints outwardly, and this is what the `Proxy` class is being used for here. `All c xs` simply is an alias for `(c x1, c x2, ...)` where `xs` is a type-level list; likewise, `All2 c xss` is `c x11, c x12, ... ` where `xss` is type-level list of lists (ie., `Code a ~ xss`). Clearly, we want the `Eq` constraint in table elements to apply to the whole table row and thereon to the table itself. And `All2 Eq (Code a)` on `geq'` specifies this.
-- **Constant functor**: The constant functor `K` is defined as `data K a b = K a`; it "discards" the second type parameter, always containing the first. Where you see `K Bool a` we are discarding the polymorphic `a` (the type of the cell in the table), and returning the (constant) type `Bool`. When we transform the structure to be over `K` (using `hcliftA2`), we are essentially making the structure *homogenous* in its elements, which in turn allows us to "collapse" it using `hcollapse` to get a single value out of it (which is what we need to be the result of `geq`).
+- **Constraint propagation**: When generically transforming SOP structures, we want to be able to "propagate" inner constraints outwardly. Here, the `Proxy` class is used for this purpose. `All c xs` is simply an alias for `(c x1, c x2, ...)` where `xs` is a type-level list. Likewise, `All2 c xss` is `c x11, c x12, ... ` where `xss` is type-level list of lists (ie., `Code a ~ xss`). Clearly, we want the `Eq` constraint in the table elements to apply to the whole table row and, thereon, to the table itself. `All2 Eq (Code a)` on `geq'` specifies this.
+- **Constant functor**: The constant functor `K` is defined as `data K a b = K a`. Always containing the first type parameter, this functor "discards" the second type. Where you see `K Bool a`, we are discarding the polymorphic `a` (the type of cell in the table), and returning the (constant) type `Bool`. When we transform the structure to be over `K` (using `hcliftA2`), we are essentially making the structure *homogenous* in its elements, which in turn allows us to "collapse" it using `hcollapse` to extract a single value (which we need to be the result of `geq`).
 
-This is just a brief taste of generics-sop combinators. Read [ATLGP] for details, and we shall introduce more in the examples below.
+This is just a brief taste of generics-sop combinators. Read [ATLGP] for details, and we shall introduce more combinators in the examples below.
 
 #### Interlude: Specialized combinators
 
-Most combinators are polymorphic over the containing structure, and as such their type signatures can be pretty complex to understand. For this reason, you might want to begin with using their *monomorphized* versions which have simpler type signatures. For example, the polymorphic combinator `hcollapse` has the following signature that makes it possible to work with any structure (`NS` or a `NP`, etc).
+Most combinators are polymorphic over the containing structure; as such, their type signatures can be pretty complex to understand. For this reason, you might want to begin by using their *monomorphized* versions, which have simpler type signatures. For example, the polymorphic combinator `hcollapse` has the following signature that makes it possible to work with any structure (`NS` or a `NP`, etc):
 
 ```haskell
 hcollapse :: SListIN h xs => h (K a) xs -> CollapseTo h a
 ```
 
-This signature is not particularly easier to understand if you are not very familiar with the library. But the monomorphized versions, such as that for `NS`, are more straightforward to understand:
+If you are not very familiar with the library, this signature is not particularly easy to understand. But the monomorphized versions, such as that for `NS`, are more straightforward:
 
 ```haskell
 collapse_NP :: NP (K a) xs -> [a]
 ```
 
-These specialized versions typically are suffixed as above (i.e., `_NP`).
+These specialized versions are typically suffixed as above (i.e., `_NP`).
 
 ## Example 2: route encoding
 
-In the first example above we demonstrated how to use generics-sop to generically implement `eq`. Here, we will show a more interesting example. Specifically, how to represent routes for a statically generated site using algebraic data types. We will derive encoders (`route -> FilePath`) for them automatically using generics-sop. 
+In the first example above, I demonstrated how to use generics-sop to generically implement `eq`. Here, I will provide a more interesting example: specifically, how to represent routes for a statically generated site using algebraic data types. We will derive encoders (`route -> FilePath`) for them automatically using generics-sop. 
 
 Imagine you are writing a static site in Haskell[^gen] for your blog posts. Each "route" in that site corresponds to a generated `.html` file. We will use ADTs to represent the routes:
 
@@ -440,7 +440,7 @@ class IsRoute r where
 
 ### Manual implementation
 
-Before writing generic implementation, it is always useful to write the implementation "by hand". Doing so enables us to begin to build an intuition for what the generic version will look like.
+Before writing generic implementation, it is always useful to write the implementation "by hand". Doing so enables us to begin building an intuition for what the generic version will look like.
 
 ```haskell
 -- This instance will remain manual.
@@ -459,19 +459,19 @@ instance IsRoute Route where
     Route_Blog br -> "blog" </> encodeRoute br
 ```
 
-There is nothing we can do about `PostSlug` instance because it is not an ADT, but we *do* want to generically implement `encodeRoute` for both `BlogRoute` and `Route` generically. 
+We can do nothing about the `PostSlug` instance because it is not an ADT, but we *do* want to implement `encodeRoute` for both `BlogRoute` and `Route` generically. 
 
 ### Identify the general pattern
 
-After writing the implementation manually, the next step is to make it as general as possible. Try to extract the "general pattern" behind these manual implementations. Looking at the instances above, we can conclude the general pattern as follows:
+Once you have written the implementation manually, the next step is to make it as general as possible. Try to extract the "general pattern" behind these manual implementations. Looking at the instances above, we can conclude the general pattern exists as follows:
 
-- To encode `Foo_Bar` in a datatype `Foo`, we drop the `Foo_`, and take the `Bar`. Then we convert it to `bar.html`.
-- If a sum constructor has arguments, we check that it has exactly one argument (arity <=1). Then call `encodeRoute` on that argument, and append it to the constructor's encoding using `/`. 
-  - For example, to encode `BlogPost_Post (PostSlug "hello")` we first encode the constructor as `"post"`, then encode the only argument as `encodeRoute (PostSlug "hello")` which reduces to `"hello.html"`, thus producing the encoding `"post/hello.html"`. Finally when encoding `Route_Blog br` - this gets encoded ito `"blog/post/hello.html"`, inductively.
+- To encode `Foo_Bar` in a datatype `Foo`, we drop the `Foo_` and take the `Bar`. Then, we convert it to `bar.html`.
+- If a sum constructor has arguments, we check that it possesses exactly one argument (arity <=1). Then, we call `encodeRoute` on that argument and append it to the constructor's encoding using `/`. 
+  - For example, to encode `BlogPost_Post (PostSlug "hello")`, we first encode the constructor as `"post"`. Then, we encode the only argument as `encodeRoute (PostSlug "hello")`, which reduces to `"hello.html"`, thus producing the encoding `"post/hello.html"`. Finally, when encoding `Route_Blog br`, it gets inductively encoded into `"blog/post/hello.html"`.
 
 ### Write the generic version
 
-Having identified the general pattern, we are now able to write the generic version of `encodeRoute`. Keep in mind the above pattern while you follow the code below.
+Having identified the general pattern, we are now able to write the generic version of `encodeRoute`. Keep in mind the above pattern while you follow the code below:
 
 ```haskell
 gEncodeRoute :: Generic r => r -> FilePath
@@ -495,7 +495,7 @@ gEncodeRoute' (SOP x) =
         hcollapse $ hmap (K . constructorName) $ datatypeCtors @r
       ctorName = ctorNames !! hindex x
       ctorSuffix = ctorStripPrefix @r ctorName
-  -- Encode the product argument, if any, otherwise end the route string with ".html"
+  -- Encode the product argument, if any; otherwise, end the route string with ".html"
    in case hcollapse $ hcmap (Proxy @IsRouteProd) encProd x of
         Nothing -> ctorSuffix <> ".html"
         Just p -> ctorSuffix </> p
@@ -517,10 +517,10 @@ ctorStripPrefix ctorName =
         T.stripPrefix (T.pack $ name <> "_") (T.pack ctorName)
 ```
 
-`hcollapse` should be familiar; and `hcmap` is just an alias of `hcliftA` (analogous to `hcliftA2` used in the above example). New here is `hcollapseMaybe` which is a custom version of `hcollapse` we defined to constrain the number of products to be either zero or one (as it would not make sense for a route tye otherwise); its full implementation[^hc] is available in the [source](https://github.com/srid/generics-sop-examples/blob/master/src/RouteEncoding.hs).
+`hcollapse` should be familiar, and `hcmap` is just an alias of `hcliftA` (analogous to `hcliftA2` used in the above example). New here is `hcollapseMaybe`, which is a custom version of `hcollapse`. We defined it to constrain the number of products to either zero or one (as it would not make sense for a route tye otherwise). Its full implementation[^hc] is available in the [source](https://github.com/srid/generics-sop-examples/blob/master/src/RouteEncoding.hs).
 
 [^hc]: 
-    In particular, we create a `HCollapseMaybe` constraint that limits `hcollapse` to work on at most 1 product:
+    In particular, we create a `HCollapseMaybe` constraint that limits `hcollapse` to work on, at most, one product:
 
     ```haskell
     class HCollapseMaybe h xs where
@@ -540,7 +540,7 @@ ctorStripPrefix ctorName =
     instance (All IsRoute xs, HCollapseMaybe NP xs) => IsRouteProd xs
     ```
 
-    Then we change `encProd` to be:
+    Then we change `encProd` to be
 
     ```haskell
     encProd :: (IsRouteProd xs) => NP I xs -> K (Maybe FilePath) xs
@@ -548,7 +548,7 @@ ctorStripPrefix ctorName =
       K . hcollapseMaybe . hcmap (Proxy @IsRoute) encTerm
     ```
     
-    While propagating the `All IsRouteProd (Code r)` constraint all the way up.
+    while propagating the `All IsRouteProd (Code r)` constraint all the way up.
 
 Finally, we make use of [`DefaultSignatures`](https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/default_signatures.html) to provide a default implementation in the `IsRoute` class:
 
@@ -562,7 +562,7 @@ class IsRoute r where
   encodeRoute = gEncodeRoute
 ```
 
-This, in turn, allows us to derive `IsRoute` arbitrarily via [`DeriveAnyClass`](https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/deriving_strategies.html), which is to say that we get our `IsRoute` instances for "free":
+This signature, in turn, allows us to derive `IsRoute` arbitrarily via [`DeriveAnyClass`](https://ghc.gitlab.haskell.org/ghc/doc/users_guide/exts/deriving_strategies.html)--which is to say that we get our `IsRoute` instances for "free":
 
 ```haskell
 data Route
@@ -572,11 +572,11 @@ data Route
   deriving anyclass (Generic, HasDatatypeInfo, IsRoute)`
 ```
 
-`encodeRoute Route_Foo` now returns `"foo.html"` and `encodeRoute $ Route_Blog BlogRoute_Index` returns `"blog/index.html"`, all without needing boilerplate implementation.
+`encodeRoute Route_Foo` now returns `"foo.html"`, and `encodeRoute $ Route_Blog BlogRoute_Index` returns `"blog/index.html"`--all without needing boilerplate implementation.
 
 ## Example 3: route decoding
 
-As a final example, we shall demonstrate what it takes to *construct* new values. Naturally, our `IsRoute` class above needs a new method, `decodeRoute` for the reverse conversion (perhaps you want to check the validity of links in the generated HTML):
+As a final example, I shall demonstrate what it takes to *construct* new values. Naturally, our `IsRoute` class above needs a new method: `decodeRoute` for the reverse conversion. (You might want to check the validity of links in the generated HTML):
 
 ```haskell
 class IsRoute r where
