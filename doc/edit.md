@@ -309,7 +309,7 @@ At this point, you are probably thinking we can simply case-match on the argumen
 
 ### Naive implementation
 
-For pedagogic reasons, we begin with a naive implementation of `geq'` to illustrate the above explanation. We need a `sumEq` function that checks the equality of the first constructor and then recurses it for others. The function will case-match on the outer list. Likewise, for each sum constructor, we will need a `prodEq` that checks the equality of its products. It does so, similarly, by checking the equality of the first product and then recursing for the rest; `prodEq` will case-match on the inner list.
+For pedagogic reasons, we begin with a naive implementation of `geq'` to illustrate the above explanation. We need a `sumEq` function that checks the equality of the first constructor and then recurses for others. The function will case-match on the outer list. Likewise, for each sum constructor, we will need a `prodEq` that checks the equality of its products. It does so, similarly, by checking the equality of the first product and then recursing for the rest; `prodEq` will case-match on the inner list.
 
 ```haskell
 geq' :: SumEq (Code a) => NS (NP I) (Code a) -> NS (NP I) (Code a) -> Bool
