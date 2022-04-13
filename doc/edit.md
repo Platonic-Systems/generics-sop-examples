@@ -607,7 +607,7 @@ sList :: SListI xs => SList xs
 sList = ...
 ```
 
-`sList` must be used heavily to generically implement `decodeRoute`. `sList` pretty much allows us to "case-match" on the type-level list and build our combinators accordingly, as we will see below.
+To generically implement `decodeRoute` we need `sList`. `sList` pretty much allows us to "case-match" on the type-level list and build our combinators accordingly, as we will see below.
 
 ### Anamomrphism combinators
 
