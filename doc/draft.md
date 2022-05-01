@@ -745,3 +745,7 @@ This concludes the introduction to `generics-sop`.
 - [Source code](https://github.com/srid/generics-sop-examples/) for this article.
 - [This ZuriHac talk](https://www.youtube.com/watch?v=sQxH349HOik) provides a good introduction to generics-sop.
 - [Applying Type-Level and Generic Programming in Haskell][ATLGP] by Andres Löh acts as a lengthy tutorial cum documentation for generics-sop.
+
+## Acknowledgements
+
+TODO: Chase, Tommy, ...
