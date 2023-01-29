@@ -3,10 +3,11 @@ title: A concise introduction to `generics-sop`
 author: Sridhar Ratnakumar
 ---
 
-A fascinating aspect of Lisp-based programming languages is that [code is data and data is code](https://en.wikipedia.org/wiki/Code_as_data). This property, called [homoiconicity](https://en.wikipedia.org/wiki/Homoiconicity), is what makes Lisp macros so powerful. This sort of runtime operation performed on arbitrary datatypes is called [polytypism](https://en.wikipedia.org/wiki/Polymorphism_(computer_science)#Polytypism), or datatype genericity. In Haskell, the following two packages provide datatype genericity:
+A fascinating aspect of Lisp-based programming languages is that [code is data and data is code](https://en.wikipedia.org/wiki/Code_as_data). This property, called [homoiconicity](https://en.wikipedia.org/wiki/Homoiconicity), is what makes Lisp macros so powerful. This sort of runtime operation performed on arbitrary datatypes is called [polytypism](https://en.wikipedia.org/wiki/Polymorphism_(computer_science)#Polytypism), or datatype genericity. In Haskell, several packages provide datatype genericity, of which the following two are notable:
 
 1. [GHC Generics](https://hackage.haskell.org/package/base-4.16.0.0/docs/GHC-Generics.html)
 2. [generics-sop](https://hackage.haskell.org/package/generics-sop)
+
 
 While GHC Generics comes with `base`, writing generics code using generics-sop is generally simpler. This article introduces `generics-sop`.
 
@@ -85,7 +86,7 @@ type Bool :: Type
 data Bool = False | True
 ```
 
-Parametrized types, such as `Maybe`, have a type-level function as their kind:
+Parametrized types, such as `Maybe`, belong to the kind of type-level functions:
 
 ```haskell
 type Maybe :: Type -> Type 
@@ -189,7 +190,7 @@ In brief, remember this: `Code a` gives us the SOP table *type* for the datatype
                 ('[] @[Type]))))
 ```
 
-Sadly, type-level lists are not represented cleanly in GHCi. But we can reduce it (in our minds) to the following:
+Sadly, type-level lists are not displayed cleanly in GHCi. But we can reduce it (in our minds) to the following:
 
 ```haskell
 > :t (unSOP . from $ breakfast)
@@ -379,7 +380,7 @@ geq' (SOP c1) (SOP c2) =
   where
     eqProd :: All Eq xs => NP I xs -> NP I xs -> Bool
     eqProd p1 p2 =
-      foldl' (&&) True $
+      and $
         hcollapse $ hcliftA2 (Proxy :: Proxy Eq) eqTerm p1 p2
       where
         eqTerm :: forall a. Eq a => I a -> I a -> K Bool a
@@ -609,7 +610,7 @@ sList = ...
 
 To generically implement `decodeRoute` we need `sList`. `sList` pretty much allows us to "case-match" on the type-level list and build our combinators accordingly, as we will see below.
 
-### Anamomrphism combinators
+### Anamorphism combinators
 
 To implement `decodeRoute` generically, we are looking to construct a `NS (NP I) (Code r)` depending on which constructor the first path segment of `fp` matches. Then, we recurse into constructing the inner route for the sum constructor's (only and optional) product type. This recursive building of values is called [anamorphism](https://en.wikipedia.org/wiki/Anamorphism#Anamorphisms_in_functional_programming). In particular, we need two anamorphisms: one for the outer sum and another for the inner product.
 
@@ -748,4 +749,4 @@ This concludes the introduction to `generics-sop`.
 
 ## Acknowledgements
 
-TODO: Chase, Tommy, ...
+TODO: Chase, Tommy, Andres Löh ...
