@@ -1,55 +1,35 @@
 {
-  description = "generics-sop-examples's description";
   inputs = {
-    nixpkgs.url = "github:nixos/nixpkgs/b66b39216b1fef2d8c33cc7a5c72d8da80b79970";
-    flake-utils.url = "github:numtide/flake-utils";
-    flake-utils.inputs.nixpkgs.follows = "nixpkgs";
-    flake-compat.url = "github:edolstra/flake-compat";
-    flake-compat.flake = false;
-    flake-compat.inputs.nixpkgs.follows = "nixpkgs";
+    nixpkgs.url = "github:nixos/nixpkgs/nixpkgs-unstable";
+    flake-parts.url = "github:hercules-ci/flake-parts";
+    haskell-flake.url = "github:srid/haskell-flake";
   };
-  outputs = inputs@{ self, nixpkgs, flake-utils, ... }:
-    flake-utils.lib.eachDefaultSystem (system:
-      let
-        overlays = [ ];
-        pkgs =
-          import nixpkgs { inherit system overlays; config.allowBroken = true; };
-        # Change GHC version here. To get the appropriate value, run:
-        #   nix-env -f "<nixpkgs>" -qaP -A haskell.compiler
-        hp = pkgs.haskellPackages; # pkgs.haskell.packages.ghc921;
-        project = returnShellEnv:
-          hp.developPackage {
-            inherit returnShellEnv;
-            name = "generics-sop-examples";
-            root = ./.;
-            withHoogle = false;
-            overrides = self: super: with pkgs.haskell.lib; {
-              # Use callCabal2nix to override Haskell dependencies here
-              # cf. https://tek.brick.do/K3VXJd8mEKO7
-              # Example: 
-              # > NanoID = self.callCabal2nix "NanoID" inputs.NanoID { };
-              # Assumes that you have the 'NanoID' flake input defined.
-            };
-            modifier = drv:
-              pkgs.haskell.lib.addBuildTools drv (with hp; [
-                # Specify your build/dev dependencies here. 
-                cabal-fmt
-                cabal-install
-                ghcid
-                haskell-language-server
-                ormolu
-                pkgs.nixpkgs-fmt
-                # For building ./doc
-                pkgs.pandoc
-                pkgs.texlive.combined.scheme-full
-              ]);
-          };
-      in
-      {
-        # Used by `nix build` & `nix run` (prod exe)
-        defaultPackage = project false;
+  outputs = inputs@{ self, nixpkgs, flake-parts, ... }:
+    flake-parts.lib.mkFlake { inherit inputs; } {
+      systems = nixpkgs.lib.systems.flakeExposed;
+      imports = [ inputs.haskell-flake.flakeModule ];
+      perSystem = { self', pkgs, ... }: {
+        haskellProjects.default = {
+          buildTools = hp:
+            let
+              # Workaround for https://github.com/NixOS/nixpkgs/issues/140774
+              fixCyclicReference = drv:
+                pkgs.haskell.lib.overrideCabal drv (_: {
+                  enableSeparateBinOutput = false;
+                });
+            in
+            {
+              ghcid = fixCyclicReference hp.ghcid;
+              haskell-language-server = hp.haskell-language-server.overrideScope
+                (lself: lsuper: {
+                  ormolu = fixCyclicReference hp.ormolu;
+                });
 
-        # Used by `nix develop` (dev shell)
-        devShell = project true;
-      });
+              pandoc = pkgs.pandoc;
+              texlive = pkgs.texlive.combined.scheme-full;
+            };
+        };
+        packages.default = self'.packages.generics-sop-examples;
+      };
+    };
 }
