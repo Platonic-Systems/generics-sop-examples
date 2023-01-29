@@ -10,6 +10,7 @@
       imports = [ inputs.haskell-flake.flakeModule ];
       perSystem = { self', pkgs, ... }: {
         haskellProjects.default = {
+          packages.generics-sop-examples.root = ./.;
           buildTools = hp:
             let
               # Workaround for https://github.com/NixOS/nixpkgs/issues/140774
