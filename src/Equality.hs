@@ -28,7 +28,8 @@ geq' (SOP c1) (SOP c2) =
     eqProd :: All Eq xs => NP I xs -> NP I xs -> Bool
     eqProd p1 p2 =
       foldl' (&&) True $
-        hcollapse $ hcliftA2 (Proxy :: Proxy Eq) eqTerm p1 p2
+        hcollapse $
+          hcliftA2 (Proxy :: Proxy Eq) eqTerm p1 p2
       where
         eqTerm :: forall a. Eq a => I a -> I a -> K Bool a
         eqTerm a b =
@@ -46,7 +47,7 @@ class SumEq xss where
   sumEq :: NS (NP I) xss -> NS (NP I) xss -> Bool
 
 instance SumEq '[] where
-  sumEq = \case
+  sumEq = \case {}
 
 instance (SumEq xss, ProdEq xs) => SumEq (xs ': xss) where
   sumEq (S x) (S y) = sumEq x y
