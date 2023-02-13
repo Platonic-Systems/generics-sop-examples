@@ -14,6 +14,9 @@
           imports = [
             inputs.nixpkgs-140774-workaround.haskellFlakeProjectModules.default
           ];
+          devShell.tools = hp: {
+            inherit (hp) cabal-fmt;
+          };
         };
         packages.default = self'.packages.generics-sop-examples;
       };
