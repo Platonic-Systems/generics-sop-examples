@@ -8,6 +8,12 @@ import RouteEncoding
     PostSlug (PostSlug),
     Route (..),
   )
+import Test.QuickCheck (quickCheck)
+
+prop_routeEncodingIsoMorphism :: Route -> Bool
+prop_routeEncodingIsoMorphism r =
+  let fp = encodeRoute r
+   in decodeRoute fp == Just r
 
 main :: IO ()
 main = do
@@ -36,3 +42,6 @@ main = do
     print r'
     unless (Just r == r') $ do
       error "non"
+
+  putStrLn "# QuickCheck"
+  quickCheck prop_routeEncodingIsoMorphism

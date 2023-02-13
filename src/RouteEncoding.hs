@@ -18,6 +18,7 @@ import GHC.Generics qualified as GHC
 import GHC.TypeLits (ErrorMessage (Text), TypeError)
 import Generics.SOP
 import System.FilePath (joinPath, splitDirectories, splitExtension, (</>))
+import Test.QuickCheck
 
 data Route
   = Route_Index
@@ -34,6 +35,15 @@ data BlogRoute
 
 newtype PostSlug = PostSlug {unPostSlug :: Text}
   deriving newtype (Eq, Show, IsString)
+
+instance Arbitrary PostSlug where
+  arbitrary = PostSlug . T.pack <$> listOf1 (elements ['a' .. 'z'])
+
+instance Arbitrary BlogRoute where
+  arbitrary = oneof [pure BlogRoute_Index, BlogRoute_Post <$> arbitrary, BlogRoute_Qux <$> arbitrary]
+
+instance Arbitrary Route where
+  arbitrary = oneof [pure Route_Index, Route_Blog <$> arbitrary]
 
 -- Class of routes that can be encoded to a filename.
 class IsRoute r where
