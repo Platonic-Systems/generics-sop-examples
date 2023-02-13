@@ -1,8 +1,8 @@
 # generics-sop-examples
 
-Source code for the upcoming blog post (see [draft blog post](https://github.com/srid/generics-sop-examples/blob/master/doc/draft.md)):
+Source code for [this blog post](https://srid.ca/generics-sop-intro).
 
-```sh-session
+```sh
 # Repl
 $ bin/repl
 # Run
