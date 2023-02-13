@@ -39,6 +39,7 @@ newtype PostSlug = PostSlug {unPostSlug :: Text}
 instance Arbitrary PostSlug where
   arbitrary = PostSlug . T.pack <$> listOf1 (elements ['a' .. 'z'])
 
+-- TODO (exercise for the reader!): generate these generically
 instance Arbitrary BlogRoute where
   arbitrary = oneof [pure BlogRoute_Index, BlogRoute_Post <$> arbitrary, BlogRoute_Qux <$> arbitrary]
 
@@ -92,9 +93,7 @@ gEncodeRoute x = gEncodeRoute' @r (from x)
 
 gEncodeRoute' :: forall r. (All2 IsRoute (Code r), All IsRouteProd (Code r), HasDatatypeInfo r) => SOP I (Code r) -> FilePath
 gEncodeRoute' (SOP x) =
-  let ctorNames :: [ConstructorName] =
-        hcollapse $ hmap (K . constructorName) $ datatypeCtors @r
-      ctorSuffix = ctorStripPrefix @r (ctorNames !! hindex x)
+  let ctorSuffix = ctorStripPrefix @r ctorName
    in case hcollapse $ hcmap (Proxy @IsRouteProd) encProd x of
         Nothing -> ctorSuffix <> ".html"
         Just p -> ctorSuffix </> p
@@ -105,6 +104,13 @@ gEncodeRoute' (SOP x) =
     encTerm :: IsRoute b => I b -> K FilePath b
     encTerm =
       K . encodeRoute . unI
+    ctorName :: ConstructorName
+    ctorName =
+      hcollapse $
+        hzipWith
+          (\c _ -> K (constructorName c))
+          (datatypeCtors @r)
+          x
 
 datatypeCtors :: forall a. HasDatatypeInfo a => NP ConstructorInfo (Code a)
 datatypeCtors = constructorInfo $ datatypeInfo (Proxy @a)

@@ -492,10 +492,7 @@ gEncodeRoute' :: forall r.
   SOP I (Code r) -> FilePath
 gEncodeRoute' (SOP x) =
   -- Determine the contructor name and then strip its prefix.
-  let ctorNames :: [ConstructorName] =
-        hcollapse $ hmap (K . constructorName) $ datatypeCtors @r
-      ctorName = ctorNames !! hindex x
-      ctorSuffix = ctorStripPrefix @r ctorName
+  let ctorSuffix = ctorStripPrefix @r ctorName
   -- Encode the product argument, if any; otherwise, end the route string with ".html"
    in case hcollapse $ hcmap (Proxy @IsRouteProd) encProd x of
         Nothing -> ctorSuffix <> ".html"
@@ -507,6 +504,12 @@ gEncodeRoute' (SOP x) =
     encTerm :: IsRoute b => I b -> K FilePath b
     encTerm =
       K . encodeRoute . unI
+    ctorName :: ConstructorName
+    ctorName =
+      hcollapse $
+        hzipWith
+          (\c _ -> K (constructorName c))
+          (datatypeCtors @r)
 
 datatypeCtors :: forall a. HasDatatypeInfo a => NP ConstructorInfo (Code a)
 datatypeCtors = constructorInfo $ datatypeInfo (Proxy @a)
